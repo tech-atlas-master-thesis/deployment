@@ -17,8 +17,9 @@ pipe.createUser({
   ],
 });
 
-pipe.createCollection('scraper');
-pipe.createCollection('transformer');
+pipe.createCollection('schedules');
+pipe.createCollection('pipelines');
+pipe.createCollection('steps');
 
 const raw_database = process.env.DB_RAW_DATABASE;
 raw = db.getSiblingDB(raw_database);

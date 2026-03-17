@@ -22,8 +22,8 @@ services:
     environment:
       ME_CONFIG_MONGODB_URL: mongodb://${DB_ROOT_USERNAME}:${DB_ROOT_PASSWORD}@mongodb:27017/
       ME_CONFIG_BASICAUTH_ENABLED: true
-      ME_CONFIG_BASICAUTH_USERNAME: mongoexpressuser
-      ME_CONFIG_BASICAUTH_PASSWORD: mongoexpresspass
+      ME_CONFIG_BASICAUTH_USERNAME: user
+      ME_CONFIG_BASICAUTH_PASSWORD: pass
     networks:
       - tech_atlas_local
 
@@ -38,6 +38,10 @@ services:
     image: moosi312/tech-atlas-dashboard-be
     container_name: tech-atlas-dashboard-be
     restart: unless-stopped
+    environment:
+      - DB_NAME=${DB_FE_DATABASE}
+      - DB_USER=${DB_FE_R_USER}
+      - DB_PASS=${DB_FE_R_PASS}
     ports:
       - 8080
     networks:
@@ -54,6 +58,13 @@ services:
     image: moosi312/tech-atlas-scraper-be
     container_name: tech-atlas-scraper-be
     restart: unless-stopped
+    environment:
+      - DB_PIPE_NAME=${DB_FE_DATABASE}
+      - DB_PIPE_USER=${DB_RAW_RW_USER}
+      - DB_PIPE_PASS=${DB_RAW_RW_PASS}
+      - DB_RAW_NAME=${DB_FE_DATABASE}
+      - DB_RAW_USER=${DB_RAW_RW_USER}
+      - DB_RAW_PASS=${DB_RAW_RW_PASS}
     ports:
       - 8050:8080
     networks:
@@ -63,6 +74,16 @@ services:
     image: moosi312/tech-atlas-transformer-be
     container_name: tech-atlas-transformer-be
     restart: unless-stopped
+    environment:
+      - DB_PIPE_NAME=${DB_FE_DATABASE}
+      - DB_PIPE_USER=${DB_RAW_RW_USER}
+      - DB_PIPE_PASS=${DB_RAW_RW_PASS}
+      - DB_RAW_NAME=${DB_FE_DATABASE}
+      - DB_RAW_USER=${DB_RAW_RW_USER}
+      - DB_RAW_PASS=${DB_RAW_RW_PASS}
+      - DB_FE_NAME=${DB_FE_DATABASE}
+      - DB_FE_USER=${DB_FE_RW_USER}
+      - DB_FE_PASS=${DB_FE_RW_PASS}
     ports:
       - 8060:8080
     networks:
