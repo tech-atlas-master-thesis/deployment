@@ -1,0 +1,76 @@
+services:
+  mongodb:
+    image: mongo:latest
+    container_name: tech-atlas-db
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${DB_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+    ports:
+      - 27017:27017
+    networks:
+      - tech_atlas_local
+    volumes:
+      - db-data:/data/db
+      - ./init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js
+      - ./.env:/.env
+    
+  mongo-express:
+    image: mongo-express
+    restart: always
+    ports:
+      - 8081:8081
+    environment:
+      ME_CONFIG_MONGODB_URL: mongodb://${DB_ROOT_USERNAME}:${DB_ROOT_PASSWORD}@mongodb:27017/
+      ME_CONFIG_BASICAUTH_ENABLED: true
+      ME_CONFIG_BASICAUTH_USERNAME: mongoexpressuser
+      ME_CONFIG_BASICAUTH_PASSWORD: mongoexpresspass
+    networks:
+      - tech_atlas_local
+
+  dashboard-ui:
+    image: moosi312/tech-atlas-dashboard-ui
+    container_name: tech-atlas-dashboard-ui
+    restart: unless-stopped
+    ports:
+      - 4200:8080
+
+  dashboard-be:
+    image: moosi312/tech-atlas-dashboard-be
+    container_name: tech-atlas-dashboard-be
+    restart: unless-stopped
+    ports:
+      - 8080
+    networks:
+      - tech_atlas_local
+
+  admin-ui:
+    image: moosi312/tech-atlas-admin-ui
+    container_name: tech-atlas-admin-ui
+    restart: unless-stopped
+    ports:
+      - 4300:8080
+
+  scraper-be:
+    image: moosi312/tech-atlas-scraper-be
+    container_name: tech-atlas-scraper-be
+    restart: unless-stopped
+    ports:
+      - 8050:8080
+    networks:
+      - tech_atlas_local
+
+  transformer-be:
+    image: moosi312/tech-atlas-transformer-be
+    container_name: tech-atlas-transformer-be
+    restart: unless-stopped
+    ports:
+      - 8060:8080
+    networks:
+      - tech_atlas_local
+
+volumes:
+  db-data:
+
+networks:
+  tech_atlas_local: 
+    name: tech_atlas_local

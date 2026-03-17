@@ -1,0 +1,97 @@
+services:
+  mongodb:
+    image: mongo:latest
+    container_name: tech-atlas-db
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${DB_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+    ports:
+      - 27017:27017
+    networks:
+      - tech_atlas_local
+    volumes:
+      - db-data:/data/db
+      - ./init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js
+      - ./.env:/.env
+      
+  landing-page:
+    image: moosi312/tech-atlas-landing-page
+    container_name: tech-atlas-landing-page
+    restart: unless-stopped
+    networks:
+      - traefik
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.tech-atlas-landing-page.rule=Host(`tech-atlas.mooslechner.dev`)
+      - traefik.http.routers.tech-atlas-landing-page.entrypoints=web
+      - com.centurylinklabs.watchtower.enable=true
+
+  dashboard-ui:
+    image: moosi312/tech-atlas-dashboard-ui
+    container_name: tech-atlas-dashboard-ui
+    restart: unless-stopped
+    networks:
+      - traefik
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.tech-atlas-dashboard-ui.rule=Host(`dashboard.tech-atlas.mooslechner.dev`) && (!PathPrefix(`/api`))
+      - traefik.http.routers.tech-atlas-dashboard-ui.entrypoints=web
+      - com.centurylinklabs.watchtower.enable=true
+
+  dashboard-be:
+    image: moosi312/tech-atlas-dashboard-be
+    container_name: tech-atlas-dashboard-be
+    restart: unless-stopped
+    networks:
+      - traefik
+      - tech_atlas_latest
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.tech-atlas-dashboard-be.rule=Host(`dashboard.tech-atlas.mooslechner.dev`) && PathPrefix(`/api`)
+      - traefik.http.routers.tech-atlas-dashboard-be.entrypoints=web
+      - com.centurylinklabs.watchtower.enable=true
+
+  admin-ui:
+    image: moosi312/tech-atlas-admin-ui
+    container_name: tech-atlas-admin-ui
+    restart: unless-stopped
+    networks:
+      - traefik
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.tech-atlas-admin-ui.rule=Host(`admin.tech-atlas.mooslechner.dev`) && (!PathPrefix(`/api`))
+      - traefik.http.routers.tech-atlas-admin-ui.entrypoints=web
+      - com.centurylinklabs.watchtower.enable=true
+
+  scraper-be:
+    image: moosi312/tech-atlas-scraper-be
+    container_name: tech-atlas-scraper-be
+    restart: unless-stopped
+    networks:
+      - traefik
+      - tech_atlas_latest
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.tech-atlas-scraper-be.rule=Host(`admin.tech-atlas.mooslechner.dev`) && PathPrefix(`/api/scraper`)
+      - traefik.http.routers.tech-atlas-scraper-be.entrypoints=web
+      - com.centurylinklabs.watchtower.enable=true
+
+  transformer-be:
+    image: moosi312/tech-atlas-transformer-be
+    container_name: tech-atlas-transformer-be
+    restart: unless-stopped
+    networks:
+      - traefik
+      - tech_atlas_latest
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.tech-atlas-transformer-be.rule=Host(`admin.tech-atlas.mooslechner.dev`) && PathPrefix(`/api/transformer`)
+      - traefik.http.routers.tech-atlas-transformer-be.entrypoints=web
+      - com.centurylinklabs.watchtower.enable=true
+
+networks:
+  tech_atlas_latest: 
+    name: tech_atlas_latest
+  traefik:
+    name: traefik
+    external: true
