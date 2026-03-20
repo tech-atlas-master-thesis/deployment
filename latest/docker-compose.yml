@@ -1,20 +1,20 @@
 services:
   mongodb:
     image: mongo:latest
-    container_name: tech-atlas-db
+    container_name: tech-atlas-db-latest
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${DB_ROOT_USERNAME}
       MONGO_INITDB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
     networks:
-      - tech_atlas_local
+      - tech_atlas_latest
     volumes:
-      - db-data:/data/db
+      - db-data_latest:/data/db
       - ./init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js
       - ./.env:/.env
       
   landing-page:
     image: moosi312/tech-atlas-landing-page
-    container_name: tech-atlas-landing-page
+    container_name: tech-atlas-landing-page-latest
     restart: unless-stopped
     networks:
       - traefik
@@ -26,7 +26,7 @@ services:
 
   dashboard-ui:
     image: moosi312/tech-atlas-dashboard-ui
-    container_name: tech-atlas-dashboard-ui
+    container_name: tech-atlas-dashboard-ui-latest
     restart: unless-stopped
     networks:
       - traefik
@@ -38,9 +38,10 @@ services:
 
   dashboard-be:
     image: moosi312/tech-atlas-dashboard-be
-    container_name: tech-atlas-dashboard-be
+    container_name: tech-atlas-dashboard-be-latest
     restart: unless-stopped
     environment:
+      - MONGO_URL=mongodb:27017
       - DB_NAME=${DB_FE_DATABASE}
       - DB_USER=${DB_FE_R_USER}
       - DB_PASS=${DB_FE_R_PASS}
@@ -55,7 +56,7 @@ services:
 
   admin-ui:
     image: moosi312/tech-atlas-admin-ui
-    container_name: tech-atlas-admin-ui
+    container_name: tech-atlas-admin-ui-latest
     restart: unless-stopped
     networks:
       - traefik
@@ -67,13 +68,14 @@ services:
 
   scraper-be:
     image: moosi312/tech-atlas-scraper-be
-    container_name: tech-atlas-scraper-be
+    container_name: tech-atlas-scraper-be-latest
     restart: unless-stopped
     environment:
-      - DB_PIPE_NAME=${DB_FE_DATABASE}
-      - DB_PIPE_USER=${DB_RAW_RW_USER}
-      - DB_PIPE_PASS=${DB_RAW_RW_PASS}
-      - DB_RAW_NAME=${DB_FE_DATABASE}
+      - MONGO_URL=mongodb:27017
+      - DB_PIPE_NAME=${DB_PIPE_DATABASE}
+      - DB_PIPE_USER=${DB_PIPE_USER_RW}
+      - DB_PIPE_PASS=${DB_PIPE_PASS_RW}
+      - DB_RAW_NAME=${DB_RAW_DATABASE}
       - DB_RAW_USER=${DB_RAW_RW_USER}
       - DB_RAW_PASS=${DB_RAW_RW_PASS}
     networks:
@@ -87,13 +89,14 @@ services:
 
   transformer-be:
     image: moosi312/tech-atlas-transformer-be
-    container_name: tech-atlas-transformer-be
+    container_name: tech-atlas-transformer-be-latest
     restart: unless-stopped
     environment:
-      - DB_PIPE_NAME=${DB_FE_DATABASE}
-      - DB_PIPE_USER=${DB_RAW_RW_USER}
-      - DB_PIPE_PASS=${DB_RAW_RW_PASS}
-      - DB_RAW_NAME=${DB_FE_DATABASE}
+      - MONGO_URL=mongodb:27017
+      - DB_PIPE_NAME=${DB_PIPE_DATABASE}
+      - DB_PIPE_USER=${DB_PIPE_USER_RW}
+      - DB_PIPE_PASS=${DB_PIPE_PASS_RW}
+      - DB_RAW_NAME=${DB_RAW_DATABASE}
       - DB_RAW_USER=${DB_RAW_RW_USER}
       - DB_RAW_PASS=${DB_RAW_RW_PASS}
       - DB_FE_NAME=${DB_FE_DATABASE}
@@ -114,3 +117,6 @@ networks:
   traefik:
     name: traefik
     external: true
+
+volumes:
+  db-data_latest:
