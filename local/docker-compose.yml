@@ -61,10 +61,10 @@ services:
     restart: unless-stopped
     environment:
       - MONGO_URL=mongodb:27017
-      - DB_PIPE_NAME=${DB_FE_DATABASE}
-      - DB_PIPE_USER=${DB_RAW_RW_USER}
-      - DB_PIPE_PASS=${DB_RAW_RW_PASS}
-      - DB_RAW_NAME=${DB_FE_DATABASE}
+      - DB_PIPE_NAME=${DB_PIPE_DATABASE}
+      - DB_PIPE_USER=${DB_PIPE_USER_RW}
+      - DB_PIPE_PASS=${DB_PIPE_PASS_RW}
+      - DB_RAW_NAME=${DB_RAW_DATABASE}
       - DB_RAW_USER=${DB_RAW_RW_USER}
       - DB_RAW_PASS=${DB_RAW_RW_PASS}
     ports:
@@ -78,10 +78,10 @@ services:
     restart: unless-stopped
     environment:
       - MONGO_URL=mongodb:27017
-      - DB_PIPE_NAME=${DB_FE_DATABASE}
-      - DB_PIPE_USER=${DB_RAW_RW_USER}
-      - DB_PIPE_PASS=${DB_RAW_RW_PASS}
-      - DB_RAW_NAME=${DB_FE_DATABASE}
+      - DB_PIPE_NAME=${DB_PIPE_DATABASE}
+      - DB_PIPE_USER=${DB_PIPE_USER_RW}
+      - DB_PIPE_PASS=${DB_PIPE_PASS_RW}
+      - DB_RAW_NAME=${DB_RAW_DATABASE}
       - DB_RAW_USER=${DB_RAW_RW_USER}
       - DB_RAW_PASS=${DB_RAW_RW_PASS}
       - DB_FE_NAME=${DB_FE_DATABASE}
