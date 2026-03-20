@@ -39,6 +39,7 @@ services:
     container_name: tech-atlas-dashboard-be
     restart: unless-stopped
     environment:
+      - MONGO_URL=mongodb:27017
       - DB_NAME=${DB_FE_DATABASE}
       - DB_USER=${DB_FE_R_USER}
       - DB_PASS=${DB_FE_R_PASS}
@@ -59,6 +60,7 @@ services:
     container_name: tech-atlas-scraper-be
     restart: unless-stopped
     environment:
+      - MONGO_URL=mongodb:27017
       - DB_PIPE_NAME=${DB_FE_DATABASE}
       - DB_PIPE_USER=${DB_RAW_RW_USER}
       - DB_PIPE_PASS=${DB_RAW_RW_PASS}
@@ -75,6 +77,7 @@ services:
     container_name: tech-atlas-transformer-be
     restart: unless-stopped
     environment:
+      - MONGO_URL=mongodb:27017
       - DB_PIPE_NAME=${DB_FE_DATABASE}
       - DB_PIPE_USER=${DB_RAW_RW_USER}
       - DB_PIPE_PASS=${DB_RAW_RW_PASS}

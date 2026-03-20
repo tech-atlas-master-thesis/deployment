@@ -5,8 +5,6 @@ services:
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${DB_ROOT_USERNAME}
       MONGO_INITDB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
-    ports:
-      - 27017:27017
     networks:
       - tech_atlas_local
     volumes:
