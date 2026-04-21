@@ -8,7 +8,7 @@ const pipe_database = process.env.DB_PIPE_DATABASE;
 pipe = db.getSiblingDB(pipe_database);
 pipe.createUser({
   user: process.env.DB_PIPE_USER_RW,
-  pwd: process.env.DB_PIPE_USER_RW,
+  pwd: process.env.DB_PIPE_PASS_RW,
   roles: [
     {
       role: 'readWrite',
@@ -17,8 +17,9 @@ pipe.createUser({
   ],
 });
 
-pipe.createCollection('scraper');
-pipe.createCollection('transformer');
+pipe.createCollection('schedules');
+pipe.createCollection('pipelines');
+pipe.createCollection('steps');
 
 const raw_database = process.env.DB_RAW_DATABASE;
 raw = db.getSiblingDB(raw_database);
