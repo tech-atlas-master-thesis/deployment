@@ -67,6 +67,8 @@ services:
       - DB_RAW_NAME=${DB_RAW_DATABASE}
       - DB_RAW_USER=${DB_RAW_RW_USER}
       - DB_RAW_PASS=${DB_RAW_RW_PASS}
+      - OAUTH_ISSUER=${OAUTH_ISSUER}
+      - OAUTH_AUDIENCE=${OAUTH_AUDIENCE}
     ports:
       - 8050:8080
     networks:
@@ -87,75 +89,31 @@ services:
       - DB_FE_DATABASE=${DB_FE_DATABASE}
       - DB_FE_RW_USER=${DB_FE_RW_USER}
       - DB_FE_RW_PASS=${DB_FE_RW_PASS}
+      - OAUTH_ISSUER=${OAUTH_ISSUER}
+      - OAUTH_AUDIENCE=${OAUTH_AUDIENCE}
     ports:
       - 8060:8080
     networks:
       - tech_atlas_local
-  authentik-postgresql:
-    env_file:
-    - .env
-    environment:
-      POSTGRES_DB: authentik
-      POSTGRES_PASSWORD: authentik
-      POSTGRES_USER: authentik
-    healthcheck:
-      interval: 30s
-      retries: 5
-      start_period: 20s
-      test:
-      - CMD-SHELL
-      - pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}
-      timeout: 5s
-    image: docker.io/library/postgres:16-alpine
-    restart: unless-stopped
-    volumes:
-    - database:/var/lib/postgresql/data
-  authentik-server:
-    command: server
-    depends_on:
-      authentik-postgresql:
-        condition: service_healthy
-    env_file:
-    - .env
-    environment:
-      AUTHENTIK_POSTGRESQL__HOST: authentik-postgresql
-      AUTHENTIK_POSTGRESQL__NAME: authentik
-      AUTHENTIK_POSTGRESQL__PASSWORD: authentik
-      AUTHENTIK_POSTGRESQL__USER: authentik
-      AUTHENTIK_SECRET_KEY: authentik
-    image: ${AUTHENTIK_IMAGE:-ghcr.io/goauthentik/server}:${AUTHENTIK_TAG:-2026.2.2}
+
+  oidc-mock:
+    image: ghcr.io/navikt/mock-oauth2-server:latest
     ports:
-    - ${COMPOSE_PORT_HTTP:-9000}:9000
-    - ${COMPOSE_PORT_HTTPS:-9443}:9443
-    restart: unless-stopped
-    shm_size: 512mb
+      - "7000:8080"
     volumes:
-    - ./authentik-blueprint:/blueprints/tech-atlas
-    - ./data:/data
-    - ./custom-templates:/templates
-  authentik-worker:
-    command: worker
-    depends_on:
-      authentik-postgresql:
-        condition: service_healthy
-    env_file:
-    - .env
+      - ./auth/config.json:/app/config.json
+      - ./auth/login.example.html:/app/login/login.example.html
+      - ./auth/static/:/app/static/
     environment:
-      AUTHENTIK_POSTGRESQL__HOST: authentik-postgresql
-      AUTHENTIK_POSTGRESQL__NAME: authentik
-      AUTHENTIK_POSTGRESQL__PASSWORD: authentik
-      AUTHENTIK_POSTGRESQL__USER: authentik
-      AUTHENTIK_SECRET_KEY: authentik
-    image: ${AUTHENTIK_IMAGE:-ghcr.io/goauthentik/server}:${AUTHENTIK_TAG:-2026.2.2}
-    restart: unless-stopped
-    shm_size: 512mb
-    user: root
-    volumes:
-    - ./authentik-blueprint:/blueprints/tech-atlas
-    - /var/run/docker.sock:/var/run/docker.sock
-    - ./data:/data
-    - ./certs:/certs
-    - ./custom-templates:/templates
+      LOG_LEVEL: "debug"
+      SERVER_PORT: 8080
+      JSON_CONFIG_PATH: /app/config.json
+    healthcheck:
+      test: [ "CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/isalive" ]
+      start_period: 5s
+      retries: 10
+      interval: 2s
+      timeout: 1s
 
 volumes:
   db-data:

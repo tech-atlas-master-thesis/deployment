@@ -1,0 +1,37 @@
+{
+    "interactiveLogin": false,
+    "tokenCallbacks": [
+        {
+            "issuerId": "default",
+            "requestMappings": [
+                {
+                    "requestParam": "code",
+                    "match": "*",
+                    "claims": {
+                        "iss": "http://localhost:7000/default",
+                        "sub": "a3d4c82f97b72ea13046c2a32eddde7baeacf65b0792c8dd160e588b62092d2f",
+                        "aud": "NjrD7i3pcLYKUPRlzdCpqLJGlbUwCq2DPY9ceeIh",
+                        "email": "fabian@mooslechner.dev",
+                        "entitlements": [
+                            "tech-atlas:read",
+                            "tech-atlas:write"
+                        ],
+                        "roles": [
+                            "tech-atlas:read",
+                            "tech-atlas:write"
+                        ],
+                        "name": "authentik Default Admin",
+                        "given_name": "authentik Default Admin",
+                        "preferred_username": "akadmin",
+                        "nickname": "akadmin",
+                        "groups": [
+                            "authentik Admins",
+                            "tech-atlas-viewer",
+                            "tech-atlas-editor"
+                        ]
+                    }
+                }
+            ]
+        }
+    ]
+}
