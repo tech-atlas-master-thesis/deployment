@@ -78,6 +78,9 @@ services:
       - DB_RAW_NAME=${DB_RAW_DATABASE}
       - DB_RAW_USER=${DB_RAW_RW_USER}
       - DB_RAW_PASS=${DB_RAW_RW_PASS}
+      - OAUTH_ISSUER=${OAUTH_ISSUER}
+      - OAUTH_AUDIENCE=${OAUTH_AUDIENCE}
+      - OAUTH_JWKS=${OAUTH_JWKS}
     networks:
       - traefik
       - tech_atlas_latest
@@ -102,6 +105,9 @@ services:
       - DB_FE_DATABASE=${DB_FE_DATABASE}
       - DB_FE_RW_USER=${DB_FE_RW_USER}
       - DB_FE_RW_PASS=${DB_FE_RW_PASS}
+      - OAUTH_ISSUER=${OAUTH_ISSUER}
+      - OAUTH_AUDIENCE=${OAUTH_AUDIENCE}
+      - OAUTH_JWKS=${OAUTH_JWKS}
     networks:
       - traefik
       - tech_atlas_latest
