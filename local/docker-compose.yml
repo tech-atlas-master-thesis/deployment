@@ -32,7 +32,9 @@ services:
     container_name: tech-atlas-dashboard-ui
     restart: unless-stopped
     ports:
-      - 4200:8080
+      - "4200:8080"
+    networks:
+      - tech_atlas_local
 
   dashboard-be:
     image: moosi312/tech-atlas-dashboard-be
@@ -53,7 +55,9 @@ services:
     container_name: tech-atlas-admin-ui
     restart: unless-stopped
     ports:
-      - 4300:8080
+      - "4300:8080"
+    networks:
+      - tech_atlas_local
 
   scraper-be:
     image: moosi312/tech-atlas-scraper-be
@@ -69,8 +73,10 @@ services:
       - DB_RAW_PASS=${DB_RAW_RW_PASS}
       - OAUTH_ISSUER=${OAUTH_ISSUER}
       - OAUTH_AUDIENCE=${OAUTH_AUDIENCE}
+      - OAUTH_JWKS=${OAUTH_JWKS}
+      - AUTH_DISABLED=true
     ports:
-      - 8050:8080
+      - "8050:8080"
     networks:
       - tech_atlas_local
 
@@ -91,8 +97,10 @@ services:
       - DB_FE_RW_PASS=${DB_FE_RW_PASS}
       - OAUTH_ISSUER=${OAUTH_ISSUER}
       - OAUTH_AUDIENCE=${OAUTH_AUDIENCE}
+      - OAUTH_JWKS=${OAUTH_JWKS}
+      - AUTH_DISABLED=true
     ports:
-      - 8060:8080
+      - "8060:8080"
     networks:
       - tech_atlas_local
 
@@ -114,6 +122,8 @@ services:
       retries: 10
       interval: 2s
       timeout: 1s
+    networks:
+      - tech_atlas_local
 
 volumes:
   db-data:
