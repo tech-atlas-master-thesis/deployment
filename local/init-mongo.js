@@ -21,6 +21,19 @@ pipe.createCollection('schedules');
 pipe.createCollection('pipelines');
 pipe.createCollection('steps');
 
+const cache_database = process.env.DB_CACHE_DATABASE;
+cache = db.getSiblingDB(cache_database);
+cache.createUser({
+  user: process.env.DB_CACHE_USER_RW,
+  pwd: process.env.DB_CACHE_PASS_RW,
+  roles: [
+    {
+      role: 'readWrite',
+      db: cache_database,
+    },
+  ],
+});
+
 const raw_database = process.env.DB_RAW_DATABASE;
 raw = db.getSiblingDB(raw_database);
 raw.createUser({
