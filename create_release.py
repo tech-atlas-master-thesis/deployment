@@ -118,7 +118,8 @@ def env_values(version: str) -> dict:
     return {
         "VERSION": version,
         "VERSION_SLUG": slug,
-        "BASE_DOMAIN": f"{slug}.{BASE_DOMAIN_ROOT}" if slug != "latest" else BASE_DOMAIN_ROOT,
+        "BASE_DOMAIN": BASE_DOMAIN_ROOT,
+        "DOMAIN_SLUG": f"-{slug}"
         "COMPOSE_PROJECT_NAME": f"tech-atlas-{slug}",
     }
 
