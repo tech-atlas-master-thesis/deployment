@@ -12,14 +12,27 @@ What it does, in order (each step is safe to re-run):
     1. Tag every app image ":latest" -> ":<version>".
     2. Create release/<version>/ and copy in docker-compose.yml + init-mongo.js
        from latest/, and .env.template from the repo root.
-    3. Upsert VERSION / VERSION_SLUG / BASE_DOMAIN / ROUTER_SUFFIX /
-       COMPOSE_PROJECT_NAME into the copied .env.template. docker-compose.yml
-       itself is never edited -- it already reads these values via ${...}.
-    4. Validate the result with `docker compose config` (if the docker CLI is
-       available) or a YAML/interpolation sanity check otherwise.
+    3. Upsert VERSION / VERSION_SLUG / BASE_DOMAIN / COMPOSE_PROJECT_NAME into
+       the copied .env.template.
+    4. Rename the Traefik router labels in the *copied* docker-compose.yml to
+       include the version (e.g. tech-atlas-dashboard-ui -> ...-2026-08-0).
+       This one piece can't be done via .env: per the Compose spec,
+       interpolation only ever applies to YAML *values*, never to mapping
+       keys (https://docs.docker.com/reference/compose-file/interpolation/),
+       and a Traefik router name is necessarily a label *key*
+       (traefik.http.routers.<name>.rule). So this is a small, whitelisted,
+       literal string replacement against the known list of router names
+       below -- not a general regex sweep of the file.
+    5. Validate the result with `docker compose config` (if the docker CLI is
+       available) or a structural YAML/interpolation check otherwise.
 
 The .env file itself is intentionally NOT copied -- .env.template is the
 starting point for a release; secrets get filled in separately.
+
+Everything else in docker-compose.yml (image tags, container/network/volume
+names, the Traefik Host() rule) is driven purely by ${VERSION} / ${VERSION_SLUG}
+/ ${BASE_DOMAIN} values in .env -- the file itself is identical across every
+release, copied byte-for-byte from latest/.
 """
 
 import argparse
@@ -44,6 +57,18 @@ APP_IMAGES = [
     "moosi312/tech-atlas-admin-ui",
     "moosi312/tech-atlas-scraper-be",
     "moosi312/tech-atlas-transformer-be",
+]
+
+# Traefik router base names used as label keys in docker-compose.yml
+# (traefik.http.routers.<name>.rule / .entrypoints). Kept as its own list
+# since it's a label *key*, not a value -- see the module docstring.
+ROUTER_NAMES = [
+    "tech-atlas-landing-page",
+    "tech-atlas-dashboard-ui",
+    "tech-atlas-dashboard-be",
+    "tech-atlas-admin-ui",
+    "tech-atlas-scraper-be",
+    "tech-atlas-transformer-be",
 ]
 
 BASE_DOMAIN_ROOT = "tech-atlas.mooslechner.dev"
@@ -94,7 +119,6 @@ def env_values(version: str) -> dict:
         "VERSION": version,
         "VERSION_SLUG": slug,
         "BASE_DOMAIN": f"{version}.{BASE_DOMAIN_ROOT}" if version != "latest" else BASE_DOMAIN_ROOT,
-        "ROUTER_SUFFIX": f"-{slug}" if version != "latest" else "",
         "COMPOSE_PROJECT_NAME": f"tech-atlas-{slug}",
     }
 
@@ -113,6 +137,21 @@ def tag_images(version: str, dry_run: bool) -> None:
             raise ReleaseError(
                 f"Failed to tag {src} -> {dst} (is the image pulled locally?)"
             ) from exc
+
+
+def rename_traefik_routers(compose_path: Path, version: str, slug: str) -> None:
+    """Suffix every known Traefik router name with the version slug, so a
+    release's routers don't collide with latest's (or another release's) in
+    Traefik's routing table. No-op for "latest" -- it keeps today's plain
+    names. Idempotent: matches on the *unsuffixed* name, so re-running this
+    against an already-suffixed file does nothing further."""
+    if version == "latest":
+        return
+
+    text = compose_path.read_text()
+    for name in ROUTER_NAMES:
+        text = text.replace(f"routers.{name}.", f"routers.{name}-{slug}.")
+    compose_path.write_text(text)
 
 
 def upsert_env_file(path: Path, values: dict) -> None:
@@ -157,16 +196,48 @@ def copy_release_files(version_dir: Path) -> Path:
     return env_template_dst
 
 
+def _find_keys_with_variables(node, path="") -> list:
+    """Recursively find any mapping KEY that still contains a literal
+    '${...}' -- this is exactly the class of bug Compose can't interpolate
+    (interpolation only ever applies to values, never to keys). Catching
+    this here means we find it before `docker compose` -- or a real
+    deployment -- does."""
+    problems = []
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if isinstance(key, str) and "${" in key:
+                problems.append(f"{path}.{key}" if path else key)
+            problems.extend(_find_keys_with_variables(value, f"{path}.{key}" if path else str(key)))
+    elif isinstance(node, list):
+        for i, item in enumerate(node):
+            problems.extend(_find_keys_with_variables(item, f"{path}[{i}]"))
+    return problems
+
+
+def _interpolate_values(node, env: dict):
+    """Mimic real Compose interpolation: substitute ${VAR} only inside
+    string VALUES, recursively -- never inside mapping keys. Returns a new
+    structure; does not mutate `node`."""
+    pattern = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
+    if isinstance(node, dict):
+        return {k: _interpolate_values(v, env) for k, v in node.items()}
+    if isinstance(node, list):
+        return [_interpolate_values(v, env) for v in node]
+    if isinstance(node, str):
+        return pattern.sub(lambda m: env.get(m.group(1), m.group(0)), node)
+    return node
+
+
 def validate_compose(version_dir: Path, values: dict) -> None:
     compose_file = version_dir / "docker-compose.yml"
-    env = {**values}
+
     try:
         subprocess.run(
             ["docker", "compose", "-f", str(compose_file), "config"],
             check=True,
             capture_output=True,
             text=True,
-            env={**_current_env(), **env},
+            env={**_current_env(), **values},
         )
         print("docker compose config: OK")
         return
@@ -175,19 +246,25 @@ def validate_compose(version_dir: Path, values: dict) -> None:
     except subprocess.CalledProcessError as exc:
         raise ReleaseError(f"docker compose config failed:\n{exc.stderr}") from exc
 
-    # Fallback when the docker CLI isn't available: parse the YAML after
-    # doing Compose-style ${VAR} substitution ourselves, so we still catch
-    # YAML/anchor mistakes before calling the release done.
+    # Fallback when the docker CLI isn't available: parse the *unmodified*
+    # YAML first (so keys and values both still contain literal ${...}),
+    # then check no key needed interpolation, then interpolate values only --
+    # this mirrors what `docker compose` actually does, unlike a blind
+    # text-substitute-then-parse pass.
     import yaml
 
-    raw = compose_file.read_text()
-    substituted = re.sub(
-        r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}",
-        lambda m: env.get(m.group(1), m.group(0)),
-        raw,
-    )
-    yaml.safe_load(substituted)
-    print("docker CLI not found -- validated YAML + variable substitution only.")
+    doc = yaml.safe_load(compose_file.read_text())
+
+    bad_keys = _find_keys_with_variables(doc)
+    if bad_keys:
+        raise ReleaseError(
+            "docker CLI not found, and these keys still contain an "
+            "unresolved '${...}' -- Compose never interpolates mapping "
+            f"keys, only values: {bad_keys}"
+        )
+
+    _interpolate_values(doc, values)
+    print("docker CLI not found -- validated YAML structure + key/value interpolation rules only.")
 
 
 def _current_env() -> dict:
@@ -205,12 +282,14 @@ def main() -> int:
     version = args.version or default_version()
     try:
         validate_version(version)
+        slug = version_slug(version)
         values = env_values(version)
 
         tag_images(version, dry_run=args.skip_tag)
 
         version_dir = prepare_release_dir(version, force=args.force)
         env_template_dst = copy_release_files(version_dir)
+        rename_traefik_routers(version_dir / "docker-compose.yml", version, slug)
         upsert_env_file(env_template_dst, values)
         validate_compose(version_dir, values)
     except ReleaseError as exc:

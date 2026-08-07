@@ -11,7 +11,7 @@ x-backend: &backend-defaults
   restart: unless-stopped
   networks:
     - traefik
-    - tech_atlas_${VERSION_SLUG}
+    - tech_atlas
 
 x-common-env: &common-env
   MONGO_URL: mongodb:27017
@@ -54,9 +54,9 @@ services:
       MONGO_INITDB_ROOT_USERNAME: ${DB_ROOT_USERNAME}
       MONGO_INITDB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
     networks:
-      - tech_atlas_${VERSION_SLUG}
+      - tech_atlas
     volumes:
-      - db-data_${VERSION_SLUG}:/data/db
+      - db-data:/data/db
       - ./init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js
       - ./.env:/.env
 
@@ -66,8 +66,8 @@ services:
     container_name: tech-atlas-landing-page-${VERSION_SLUG}
     labels:
       <<: *common-labels
-      traefik.http.routers.tech-atlas-landing-page${ROUTER_SUFFIX}.rule: "Host(`${BASE_DOMAIN}`)"
-      traefik.http.routers.tech-atlas-landing-page${ROUTER_SUFFIX}.entrypoints: web
+      traefik.http.routers.tech-atlas-landing-page.rule: "Host(`${BASE_DOMAIN}`)"
+      traefik.http.routers.tech-atlas-landing-page.entrypoints: web
 
   dashboard-ui:
     <<: *frontend-defaults
@@ -75,8 +75,8 @@ services:
     container_name: tech-atlas-dashboard-ui-${VERSION_SLUG}
     labels:
       <<: *common-labels
-      traefik.http.routers.tech-atlas-dashboard-ui${ROUTER_SUFFIX}.rule: "Host(`dashboard.${BASE_DOMAIN}`) && (!PathPrefix(`/api`))"
-      traefik.http.routers.tech-atlas-dashboard-ui${ROUTER_SUFFIX}.entrypoints: web
+      traefik.http.routers.tech-atlas-dashboard-ui.rule: "Host(`dashboard.${BASE_DOMAIN}`) && (!PathPrefix(`/api`))"
+      traefik.http.routers.tech-atlas-dashboard-ui.entrypoints: web
 
   dashboard-be:
     <<: *backend-defaults
@@ -86,8 +86,8 @@ services:
       <<: [*common-env, *fe-r-env]
     labels:
       <<: *common-labels
-      traefik.http.routers.tech-atlas-dashboard-be${ROUTER_SUFFIX}.rule: "Host(`dashboard.${BASE_DOMAIN}`) && PathPrefix(`/api`)"
-      traefik.http.routers.tech-atlas-dashboard-be${ROUTER_SUFFIX}.entrypoints: web
+      traefik.http.routers.tech-atlas-dashboard-be.rule: "Host(`dashboard.${BASE_DOMAIN}`) && PathPrefix(`/api`)"
+      traefik.http.routers.tech-atlas-dashboard-be.entrypoints: web
 
   admin-ui:
     <<: *frontend-defaults
@@ -95,8 +95,8 @@ services:
     container_name: tech-atlas-admin-ui-${VERSION_SLUG}
     labels:
       <<: *common-labels
-      traefik.http.routers.tech-atlas-admin-ui${ROUTER_SUFFIX}.rule: "Host(`admin.${BASE_DOMAIN}`) && (!PathPrefix(`/api`))"
-      traefik.http.routers.tech-atlas-admin-ui${ROUTER_SUFFIX}.entrypoints: web
+      traefik.http.routers.tech-atlas-admin-ui.rule: "Host(`admin.${BASE_DOMAIN}`) && (!PathPrefix(`/api`))"
+      traefik.http.routers.tech-atlas-admin-ui.entrypoints: web
 
   scraper-be:
     <<: *backend-defaults
@@ -106,8 +106,8 @@ services:
       <<: [*common-env, *pipe-env, *raw-env, *oauth-env]
     labels:
       <<: *common-labels
-      traefik.http.routers.tech-atlas-scraper-be${ROUTER_SUFFIX}.rule: "Host(`admin.${BASE_DOMAIN}`) && PathPrefix(`/api/scraper`)"
-      traefik.http.routers.tech-atlas-scraper-be${ROUTER_SUFFIX}.entrypoints: web
+      traefik.http.routers.tech-atlas-scraper-be.rule: "Host(`admin.${BASE_DOMAIN}`) && PathPrefix(`/api/scraper`)"
+      traefik.http.routers.tech-atlas-scraper-be.entrypoints: web
 
   transformer-be:
     <<: *backend-defaults
@@ -117,15 +117,16 @@ services:
       <<: [*common-env, *pipe-env, *raw-env, *oauth-env, *cache-env, *fe-rw-env]
     labels:
       <<: *common-labels
-      traefik.http.routers.tech-atlas-transformer-be${ROUTER_SUFFIX}.rule: "Host(`admin.${BASE_DOMAIN}`) && PathPrefix(`/api/transformer`)"
-      traefik.http.routers.tech-atlas-transformer-be${ROUTER_SUFFIX}.entrypoints: web
+      traefik.http.routers.tech-atlas-transformer-be.rule: "Host(`admin.${BASE_DOMAIN}`) && PathPrefix(`/api/transformer`)"
+      traefik.http.routers.tech-atlas-transformer-be.entrypoints: web
 
 networks:
-  tech_atlas_${VERSION_SLUG}:
+  tech_atlas:
     name: tech_atlas_${VERSION_SLUG}
   traefik:
     name: traefik
     external: true
 
 volumes:
-  db-data_${VERSION_SLUG}:
+  db-data:
+    name: db-data_${VERSION_SLUG}
