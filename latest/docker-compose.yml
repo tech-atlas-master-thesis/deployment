@@ -66,7 +66,7 @@ services:
     container_name: tech-atlas-landing-page-${VERSION_SLUG}
     labels:
       <<: *common-labels
-      traefik.http.routers.tech-atlas-landing-page.rule: "Host(`${VERSION_SLUG}.${BASE_DOMAIN}`)"
+      traefik.http.routers.tech-atlas-landing-page.rule: "Host(`${LANDING_PAGE_SLUG}.${BASE_DOMAIN}`)"
       traefik.http.routers.tech-atlas-landing-page.entrypoints: web
 
   dashboard-ui:

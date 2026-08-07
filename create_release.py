@@ -120,6 +120,7 @@ def env_values(version: str) -> dict:
         "VERSION_SLUG": slug,
         "BASE_DOMAIN": BASE_DOMAIN_ROOT,
         "DOMAIN_SLUG": f"-{slug}",
+        "LANDING_PAGE_SLUG": slug,
         "COMPOSE_PROJECT_NAME": f"tech-atlas-{slug}",
     }
 
