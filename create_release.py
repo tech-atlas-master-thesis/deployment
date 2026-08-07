@@ -118,7 +118,7 @@ def env_values(version: str) -> dict:
     return {
         "VERSION": version,
         "VERSION_SLUG": slug,
-        "BASE_DOMAIN": f"{version}.{BASE_DOMAIN_ROOT}" if version != "latest" else BASE_DOMAIN_ROOT,
+        "BASE_DOMAIN": f"{slug}.{BASE_DOMAIN_ROOT}" if slug != "latest" else BASE_DOMAIN_ROOT,
         "COMPOSE_PROJECT_NAME": f"tech-atlas-{slug}",
     }
 
@@ -131,6 +131,7 @@ def tag_images(version: str, dry_run: bool) -> None:
             continue
         try:
             subprocess.run(["docker", "tag", src, dst], check=True)
+            subprocess.run(["docker", "push", dst], check=True)
         except FileNotFoundError:
             raise ReleaseError("docker CLI not found on PATH.")
         except subprocess.CalledProcessError as exc:
