@@ -1,131 +1,131 @@
+x-common-labels: &common-labels
+  traefik.enable: "true"
+  com.centurylinklabs.watchtower.enable: "true"
+
+x-frontend: &frontend-defaults
+  restart: unless-stopped
+  networks:
+    - traefik
+
+x-backend: &backend-defaults
+  restart: unless-stopped
+  networks:
+    - traefik
+    - tech_atlas_${VERSION_SLUG}
+
+x-common-env: &common-env
+  MONGO_URL: mongodb:27017
+
+x-oauth-env: &oauth-env
+  OAUTH_ISSUER: ${OAUTH_ISSUER}
+  OAUTH_AUDIENCE: ${OAUTH_AUDIENCE}
+  OAUTH_JWKS: ${OAUTH_JWKS}
+
+x-pipe-env: &pipe-env
+  DB_PIPE_NAME: ${DB_PIPE_DATABASE}
+  DB_PIPE_USER: ${DB_PIPE_USER_RW}
+  DB_PIPE_PASS: ${DB_PIPE_PASS_RW}
+
+x-raw-env: &raw-env
+  DB_RAW_NAME: ${DB_RAW_DATABASE}
+  DB_RAW_USER: ${DB_RAW_RW_USER}
+  DB_RAW_PASS: ${DB_RAW_RW_PASS}
+
+x-cache-env: &cache-env
+  DB_CACHE_NAME: ${DB_CACHE_DATABASE}
+  DB_CACHE_USER: ${DB_CACHE_USER_RW}
+  DB_CACHE_PASS: ${DB_CACHE_PASS_RW}
+
+x-fe-rw-env: &fe-rw-env
+  DB_FE_DATABASE: ${DB_FE_DATABASE}
+  DB_FE_RW_USER: ${DB_FE_RW_USER}
+  DB_FE_RW_PASS: ${DB_FE_RW_PASS}
+
+x-fe-r-env: &fe-r-env
+  DB_NAME: ${DB_FE_DATABASE}
+  DB_USER: ${DB_FE_R_USER}
+  DB_PASS: ${DB_FE_R_PASS}
+
 services:
   mongodb:
     image: mongo:latest
-    container_name: tech-atlas-db-latest
+    container_name: tech-atlas-db-${VERSION_SLUG}
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${DB_ROOT_USERNAME}
       MONGO_INITDB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
     networks:
-      - tech_atlas_latest
+      - tech_atlas_${VERSION_SLUG}
     volumes:
-      - db-data_latest:/data/db
+      - db-data_${VERSION_SLUG}:/data/db
       - ./init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js
       - ./.env:/.env
-      
+
   landing-page:
-    image: moosi312/tech-atlas-landing-page
-    container_name: tech-atlas-landing-page-latest
-    restart: unless-stopped
-    networks:
-      - traefik
+    <<: *frontend-defaults
+    image: moosi312/tech-atlas-landing-page:${VERSION}
+    container_name: tech-atlas-landing-page-${VERSION_SLUG}
     labels:
-      - traefik.enable=true
-      - traefik.http.routers.tech-atlas-landing-page.rule=Host(`tech-atlas.mooslechner.dev`)
-      - traefik.http.routers.tech-atlas-landing-page.entrypoints=web
-      - com.centurylinklabs.watchtower.enable=true
+      <<: *common-labels
+      traefik.http.routers.tech-atlas-landing-page${ROUTER_SUFFIX}.rule: "Host(`${BASE_DOMAIN}`)"
+      traefik.http.routers.tech-atlas-landing-page${ROUTER_SUFFIX}.entrypoints: web
 
   dashboard-ui:
-    image: moosi312/tech-atlas-dashboard-ui
-    container_name: tech-atlas-dashboard-ui-latest
-    restart: unless-stopped
-    networks:
-      - traefik
+    <<: *frontend-defaults
+    image: moosi312/tech-atlas-dashboard-ui:${VERSION}
+    container_name: tech-atlas-dashboard-ui-${VERSION_SLUG}
     labels:
-      - traefik.enable=true
-      - traefik.http.routers.tech-atlas-dashboard-ui.rule=Host(`dashboard.tech-atlas.mooslechner.dev`) && (!PathPrefix(`/api`))
-      - traefik.http.routers.tech-atlas-dashboard-ui.entrypoints=web
-      - com.centurylinklabs.watchtower.enable=true
+      <<: *common-labels
+      traefik.http.routers.tech-atlas-dashboard-ui${ROUTER_SUFFIX}.rule: "Host(`dashboard.${BASE_DOMAIN}`) && (!PathPrefix(`/api`))"
+      traefik.http.routers.tech-atlas-dashboard-ui${ROUTER_SUFFIX}.entrypoints: web
 
   dashboard-be:
-    image: moosi312/tech-atlas-dashboard-be
-    container_name: tech-atlas-dashboard-be-latest
-    restart: unless-stopped
+    <<: *backend-defaults
+    image: moosi312/tech-atlas-dashboard-be:${VERSION}
+    container_name: tech-atlas-dashboard-be-${VERSION_SLUG}
     environment:
-      - MONGO_URL=mongodb:27017
-      - DB_NAME=${DB_FE_DATABASE}
-      - DB_USER=${DB_FE_R_USER}
-      - DB_PASS=${DB_FE_R_PASS}
-    networks:
-      - traefik
-      - tech_atlas_latest
+      <<: [*common-env, *fe-r-env]
     labels:
-      - traefik.enable=true
-      - traefik.http.routers.tech-atlas-dashboard-be.rule=Host(`dashboard.tech-atlas.mooslechner.dev`) && PathPrefix(`/api`)
-      - traefik.http.routers.tech-atlas-dashboard-be.entrypoints=web
-      - com.centurylinklabs.watchtower.enable=true
+      <<: *common-labels
+      traefik.http.routers.tech-atlas-dashboard-be${ROUTER_SUFFIX}.rule: "Host(`dashboard.${BASE_DOMAIN}`) && PathPrefix(`/api`)"
+      traefik.http.routers.tech-atlas-dashboard-be${ROUTER_SUFFIX}.entrypoints: web
 
   admin-ui:
-    image: moosi312/tech-atlas-admin-ui
-    container_name: tech-atlas-admin-ui-latest
-    restart: unless-stopped
-    networks:
-      - traefik
+    <<: *frontend-defaults
+    image: moosi312/tech-atlas-admin-ui:${VERSION}
+    container_name: tech-atlas-admin-ui-${VERSION_SLUG}
     labels:
-      - traefik.enable=true
-      - traefik.http.routers.tech-atlas-admin-ui.rule=Host(`admin.tech-atlas.mooslechner.dev`) && (!PathPrefix(`/api`))
-      - traefik.http.routers.tech-atlas-admin-ui.entrypoints=web
-      - com.centurylinklabs.watchtower.enable=true
+      <<: *common-labels
+      traefik.http.routers.tech-atlas-admin-ui${ROUTER_SUFFIX}.rule: "Host(`admin.${BASE_DOMAIN}`) && (!PathPrefix(`/api`))"
+      traefik.http.routers.tech-atlas-admin-ui${ROUTER_SUFFIX}.entrypoints: web
 
   scraper-be:
-    image: moosi312/tech-atlas-scraper-be
-    container_name: tech-atlas-scraper-be-latest
-    restart: unless-stopped
+    <<: *backend-defaults
+    image: moosi312/tech-atlas-scraper-be:${VERSION}
+    container_name: tech-atlas-scraper-be-${VERSION_SLUG}
     environment:
-      - MONGO_URL=mongodb:27017
-      - DB_PIPE_NAME=${DB_PIPE_DATABASE}
-      - DB_PIPE_USER=${DB_PIPE_USER_RW}
-      - DB_PIPE_PASS=${DB_PIPE_PASS_RW}
-      - DB_RAW_NAME=${DB_RAW_DATABASE}
-      - DB_RAW_USER=${DB_RAW_RW_USER}
-      - DB_RAW_PASS=${DB_RAW_RW_PASS}
-      - OAUTH_ISSUER=${OAUTH_ISSUER}
-      - OAUTH_AUDIENCE=${OAUTH_AUDIENCE}
-      - OAUTH_JWKS=${OAUTH_JWKS}
-    networks:
-      - traefik
-      - tech_atlas_latest
+      <<: [*common-env, *pipe-env, *raw-env, *oauth-env]
     labels:
-      - traefik.enable=true
-      - traefik.http.routers.tech-atlas-scraper-be.rule=Host(`admin.tech-atlas.mooslechner.dev`) && PathPrefix(`/api/scraper`)
-      - traefik.http.routers.tech-atlas-scraper-be.entrypoints=web
-      - com.centurylinklabs.watchtower.enable=true
+      <<: *common-labels
+      traefik.http.routers.tech-atlas-scraper-be${ROUTER_SUFFIX}.rule: "Host(`admin.${BASE_DOMAIN}`) && PathPrefix(`/api/scraper`)"
+      traefik.http.routers.tech-atlas-scraper-be${ROUTER_SUFFIX}.entrypoints: web
 
   transformer-be:
-    image: moosi312/tech-atlas-transformer-be
-    container_name: tech-atlas-transformer-be-latest
-    restart: unless-stopped
+    <<: *backend-defaults
+    image: moosi312/tech-atlas-transformer-be:${VERSION}
+    container_name: tech-atlas-transformer-be-${VERSION_SLUG}
     environment:
-      - MONGO_URL=mongodb:27017
-      - DB_PIPE_NAME=${DB_PIPE_DATABASE}
-      - DB_PIPE_USER=${DB_PIPE_USER_RW}
-      - DB_PIPE_PASS=${DB_PIPE_PASS_RW}
-      - DB_CACHE_NAME=${DB_CACHE_DATABASE}
-      - DB_CACHE_USER=${DB_CACHE_USER_RW}
-      - DB_CACHE_PASS=${DB_CACHE_PASS_RW}
-      - DB_RAW_NAME=${DB_RAW_DATABASE}
-      - DB_RAW_USER=${DB_RAW_RW_USER}
-      - DB_RAW_PASS=${DB_RAW_RW_PASS}
-      - DB_FE_DATABASE=${DB_FE_DATABASE}
-      - DB_FE_RW_USER=${DB_FE_RW_USER}
-      - DB_FE_RW_PASS=${DB_FE_RW_PASS}
-      - OAUTH_ISSUER=${OAUTH_ISSUER}
-      - OAUTH_AUDIENCE=${OAUTH_AUDIENCE}
-      - OAUTH_JWKS=${OAUTH_JWKS}
-    networks:
-      - traefik
-      - tech_atlas_latest
+      <<: [*common-env, *pipe-env, *raw-env, *oauth-env, *cache-env, *fe-rw-env]
     labels:
-      - traefik.enable=true
-      - traefik.http.routers.tech-atlas-transformer-be.rule=Host(`admin.tech-atlas.mooslechner.dev`) && PathPrefix(`/api/transformer`)
-      - traefik.http.routers.tech-atlas-transformer-be.entrypoints=web
-      - com.centurylinklabs.watchtower.enable=true
+      <<: *common-labels
+      traefik.http.routers.tech-atlas-transformer-be${ROUTER_SUFFIX}.rule: "Host(`admin.${BASE_DOMAIN}`) && PathPrefix(`/api/transformer`)"
+      traefik.http.routers.tech-atlas-transformer-be${ROUTER_SUFFIX}.entrypoints: web
 
 networks:
-  tech_atlas_latest: 
-    name: tech_atlas_latest
+  tech_atlas_${VERSION_SLUG}:
+    name: tech_atlas_${VERSION_SLUG}
   traefik:
     name: traefik
     external: true
 
 volumes:
-  db-data_latest:
+  db-data_${VERSION_SLUG}:
