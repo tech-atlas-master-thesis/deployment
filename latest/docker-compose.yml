@@ -98,27 +98,16 @@ services:
       traefik.http.routers.tech-atlas-admin-ui.rule: "Host(`admin${DOMAIN_SLUG}.${BASE_DOMAIN}`) && (!PathPrefix(`/api`))"
       traefik.http.routers.tech-atlas-admin-ui.entrypoints: web
 
-  scraper-be:
+  admin-be:
     <<: *backend-defaults
-    image: moosi312/tech-atlas-scraper-be:${VERSION}
-    container_name: tech-atlas-scraper-be-${VERSION_SLUG}
-    environment:
-      <<: [*common-env, *pipe-env, *raw-env, *oauth-env]
-    labels:
-      <<: *common-labels
-      traefik.http.routers.tech-atlas-scraper-be.rule: "Host(`admin${DOMAIN_SLUG}.${BASE_DOMAIN}`) && PathPrefix(`/api/scraper`)"
-      traefik.http.routers.tech-atlas-scraper-be.entrypoints: web
-
-  transformer-be:
-    <<: *backend-defaults
-    image: moosi312/tech-atlas-transformer-be:${VERSION}
-    container_name: tech-atlas-transformer-be-${VERSION_SLUG}
+    image: moosi312/tech-atlas-admin-be:${VERSION}
+    container_name: tech-atlas-admin-be-${VERSION_SLUG}
     environment:
       <<: [*common-env, *pipe-env, *raw-env, *oauth-env, *cache-env, *fe-rw-env]
     labels:
       <<: *common-labels
-      traefik.http.routers.tech-atlas-transformer-be.rule: "Host(`admin${DOMAIN_SLUG}.${BASE_DOMAIN}`) && PathPrefix(`/api/transformer`)"
-      traefik.http.routers.tech-atlas-transformer-be.entrypoints: web
+      traefik.http.routers.tech-atlas-admin-be.rule: "Host(`admin${DOMAIN_SLUG}.${BASE_DOMAIN}`) && PathPrefix(`/api/admin`)"
+      traefik.http.routers.tech-atlas-admin-be.entrypoints: web
 
 networks:
   tech_atlas:

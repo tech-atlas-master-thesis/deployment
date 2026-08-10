@@ -59,30 +59,9 @@ services:
     networks:
       - tech_atlas_local
 
-  scraper-be:
-    image: moosi312/tech-atlas-scraper-be
-    container_name: tech-atlas-scraper-be
-    restart: unless-stopped
-    environment:
-      - MONGO_URL=mongodb:27017
-      - DB_PIPE_NAME=${DB_PIPE_DATABASE}
-      - DB_PIPE_USER=${DB_PIPE_USER_RW}
-      - DB_PIPE_PASS=${DB_PIPE_PASS_RW}
-      - DB_RAW_NAME=${DB_RAW_DATABASE}
-      - DB_RAW_USER=${DB_RAW_RW_USER}
-      - DB_RAW_PASS=${DB_RAW_RW_PASS}
-      - OAUTH_ISSUER=${OAUTH_ISSUER}
-      - OAUTH_AUDIENCE=${OAUTH_AUDIENCE}
-      - OAUTH_JWKS=${OAUTH_JWKS}
-      - AUTH_DISABLED=true
-    ports:
-      - "8050:8080"
-    networks:
-      - tech_atlas_local
-
-  transformer-be:
-    image: moosi312/tech-atlas-transformer-be
-    container_name: tech-atlas-transformer-be
+  admin-be:
+    image: moosi312/tech-atlas-admin-be
+    container_name: tech-atlas-admin-be
     restart: unless-stopped
     environment:
       - MONGO_URL=mongodb:27017
@@ -103,7 +82,7 @@ services:
       - OAUTH_JWKS=${OAUTH_JWKS}
       - AUTH_DISABLED=true
     ports:
-      - "8060:8080"
+      - "8070:8080"
     networks:
       - tech_atlas_local
 
