@@ -76,4 +76,17 @@ fe.createUser({
 });
 fe.createCollection('projects');
 fe.createCollection('organisations');
-fe.createCollection('grants')
+fe.createCollection('grants');
+
+const registry_database = process.env.DB_REGISTRY_NAME;
+registry = db.getSiblingDB(registry_database);
+registry.createUser({
+  user: process.env.DB_REGISTRY_USER,
+  pwd: process.env.DB_REGISTRY_PASS,
+  roles: [
+    {
+      role: 'readWrite',
+      db: registry_database,
+    },
+  ],
+});
