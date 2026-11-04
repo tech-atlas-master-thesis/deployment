@@ -26,8 +26,14 @@ What it does, in order (each step is safe to re-run):
     5. Validate the result with `docker compose config` (if the docker CLI is
        available) or a structural YAML/interpolation check otherwise.
 
-The .env file itself is intentionally NOT copied -- .env.template is the
-starting point for a release; secrets get filled in separately.
+    6. Repeat steps 2-5 for prod/, using "prod" in place of the version slug
+       (container/network/volume names, router names, subdomains). VERSION
+       stays the real version, so prod runs the images tagged in step 1.
+       prod/ is refreshed by every release, without needing --force.
+
+The .env file itself is intentionally NOT copied, neither to release/<version>/
+nor to prod/ -- .env.template is the starting point for a release; secrets get
+filled in separately. An existing prod/.env is left untouched.
 
 Everything else in docker-compose.yml (image tags, container/network/volume
 names, the Traefik Host() rule) is driven purely by ${VERSION} / ${VERSION_SLUG}
@@ -46,6 +52,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 LATEST_DIR = ROOT / "latest"
 RELEASE_ROOT = ROOT / "release"
+PROD_DIR = ROOT / "prod"
+PROD_SLUG = "prod"
 ENV_TEMPLATE_SRC = ROOT / ".env.template"
 
 # The app images we build & tag ourselves. Third-party images (e.g. mongo)
@@ -55,8 +63,7 @@ APP_IMAGES = [
     "moosi312/tech-atlas-dashboard-ui",
     "moosi312/tech-atlas-dashboard-be",
     "moosi312/tech-atlas-admin-ui",
-    "moosi312/tech-atlas-scraper-be",
-    "moosi312/tech-atlas-transformer-be",
+    "moosi312/tech-atlas-admin-be",
 ]
 
 # Traefik router base names used as label keys in docker-compose.yml
@@ -67,8 +74,7 @@ ROUTER_NAMES = [
     "tech-atlas-dashboard-ui",
     "tech-atlas-dashboard-be",
     "tech-atlas-admin-ui",
-    "tech-atlas-scraper-be",
-    "tech-atlas-transformer-be",
+    "tech-atlas-admin-be",
 ]
 
 BASE_DOMAIN_ROOT = "tech-atlas.mooslechner.dev"
@@ -113,14 +119,13 @@ def version_slug(version: str) -> str:
     return version.replace(".", "-")
 
 
-def env_values(version: str) -> dict:
-    slug = version_slug(version)
+def env_values(version: str, slug: str) -> dict:
     return {
         "VERSION": version,
         "VERSION_SLUG": slug,
         "BASE_DOMAIN": BASE_DOMAIN_ROOT,
         "DOMAIN_SLUG": f"-{slug}",
-        "LANDING_PAGE_SLUG": slug,
+        "LANDING_PAGE_SLUG": f"{slug}.",
         "COMPOSE_PROJECT_NAME": f"tech-atlas-{slug}",
     }
 
@@ -142,13 +147,13 @@ def tag_images(version: str, dry_run: bool) -> None:
             ) from exc
 
 
-def rename_traefik_routers(compose_path: Path, version: str, slug: str) -> None:
-    """Suffix every known Traefik router name with the version slug, so a
-    release's routers don't collide with latest's (or another release's) in
-    Traefik's routing table. No-op for "latest" -- it keeps today's plain
-    names. Idempotent: matches on the *unsuffixed* name, so re-running this
-    against an already-suffixed file does nothing further."""
-    if version == "latest":
+def rename_traefik_routers(compose_path: Path, slug: str) -> None:
+    """Suffix every known Traefik router name with the slug, so a release's
+    routers don't collide with latest's (or another release's) in Traefik's
+    routing table. No-op for "latest" -- it keeps today's plain names.
+    Idempotent: matches on the *unsuffixed* name, so re-running this against
+    an already-suffixed file does nothing further."""
+    if slug == "latest":
         return
 
     text = compose_path.read_text()
@@ -191,12 +196,23 @@ def prepare_release_dir(version: str, force: bool) -> Path:
     return version_dir
 
 
-def copy_release_files(version_dir: Path) -> Path:
-    shutil.copy2(LATEST_DIR / "docker-compose.yml", version_dir / "docker-compose.yml")
-    shutil.copy2(LATEST_DIR / "init-mongo.js", version_dir / "init-mongo.js")
-    env_template_dst = version_dir / ".env.template"
+def copy_release_files(target_dir: Path) -> Path:
+    """Copies an explicit list of files, which is what keeps latest/.env out
+    of every release and of prod/."""
+    shutil.copy2(LATEST_DIR / "docker-compose.yml", target_dir / "docker-compose.yml")
+    shutil.copy2(LATEST_DIR / "init-mongo.js", target_dir / "init-mongo.js")
+    env_template_dst = target_dir / ".env.template"
     shutil.copy2(ENV_TEMPLATE_SRC, env_template_dst)
     return env_template_dst
+
+
+def build_deployment(target_dir: Path, version: str, slug: str) -> None:
+    """Fill target_dir with the release files, set up for the given slug."""
+    values = env_values(version, slug)
+    env_template_dst = copy_release_files(target_dir)
+    rename_traefik_routers(target_dir / "docker-compose.yml", slug)
+    upsert_env_file(env_template_dst, values)
+    validate_compose(target_dir, values)
 
 
 def _find_keys_with_variables(node, path="") -> list:
@@ -285,21 +301,20 @@ def main() -> int:
     version = args.version or default_version()
     try:
         validate_version(version)
-        slug = version_slug(version)
-        values = env_values(version)
 
         tag_images(version, dry_run=args.skip_tag)
 
         version_dir = prepare_release_dir(version, force=args.force)
-        env_template_dst = copy_release_files(version_dir)
-        rename_traefik_routers(version_dir / "docker-compose.yml", version, slug)
-        upsert_env_file(env_template_dst, values)
-        validate_compose(version_dir, values)
+        build_deployment(version_dir, version, version_slug(version))
+
+        PROD_DIR.mkdir(exist_ok=True)
+        build_deployment(PROD_DIR, version, PROD_SLUG)
     except ReleaseError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
     print(f"\nRelease '{version}' created at {version_dir}")
+    print(f"Prod updated to '{version}' at {PROD_DIR}")
     return 0
 
 
