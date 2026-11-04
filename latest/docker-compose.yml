@@ -125,8 +125,6 @@ services:
       - UPDATE_STRATEGY=PARALLEL     # background download, then swap
       - UPDATE_INTERVAL=720h         # ~30 days
       - JAVA_PARAMS=-Xmx4g
-    ports:
-      - "2322:2322"
     volumes: 
       - photon-index:/photon/data
     restart: unless-stopped
