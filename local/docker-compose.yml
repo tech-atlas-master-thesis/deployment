@@ -2,6 +2,12 @@ services:
   mongodb:
     image: mongo:latest
     container_name: tech-atlas-db
+    # WiredTiger otherwise sizes its cache from the host (about half of its RAM) and keeps what
+    # it has read or written until that fills up. The limit leaves room for connections, index
+    # builds and the page cache on top of the 1 GB cache.
+    command: ["--wiredTigerCacheSizeGB", "1"]
+    mem_limit: 2g
+    restart: unless-stopped
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${DB_ROOT_USERNAME}
       MONGO_INITDB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
@@ -63,6 +69,9 @@ services:
     image: moosi312/tech-atlas-admin-be
     container_name: tech-atlas-admin-be
     restart: unless-stopped
+    # A full transform run holds the scraper data and every step result until it ends; this
+    # is headroom for that, and a ceiling that turns a leak into a restart instead of host pressure.
+    mem_limit: 2g
     environment:
       - MONGO_URL=mongodb:27017
       - DB_PIPE_NAME=${DB_PIPE_DATABASE}
@@ -113,11 +122,14 @@ services:
 
   photon:
     image: rtuszik/photon-docker:latest
+    mem_limit: 2g
     environment:
       - REGION=at
       - UPDATE_STRATEGY=PARALLEL     # background download, then swap
       - UPDATE_INTERVAL=720h         # ~30 days
-      - JAVA_PARAMS=-Xmx4g
+      # The heap has to fit inside mem_limit with room for the JVM's own memory on top;
+      # a 4g heap under a 2g limit would get the container killed instead of collected.
+      - JAVA_PARAMS=-Xmx1500m
     ports:
       - "2322:2322"
     volumes: [photon-index:/photon/data]

@@ -58,6 +58,12 @@ services:
   mongodb:
     image: mongo:latest
     container_name: tech-atlas-db-${VERSION_SLUG}
+    # WiredTiger otherwise sizes its cache from the host (about half of its RAM) and keeps what
+    # it has read or written until that fills up. The limit leaves room for connections, index
+    # builds and the page cache on top of the 1 GB cache.
+    command: ["--wiredTigerCacheSizeGB", "1"]
+    mem_limit: 2g
+    restart: unless-stopped
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${DB_ROOT_USERNAME}
       MONGO_INITDB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
@@ -110,6 +116,9 @@ services:
     <<: *backend-defaults
     image: moosi312/tech-atlas-admin-be:${VERSION}
     container_name: tech-atlas-admin-be-${VERSION_SLUG}
+    # A full transform run holds the scraper data and every step result until it ends; this
+    # is headroom for that, and a ceiling that turns a leak into a restart instead of host pressure.
+    mem_limit: 2g
     environment:
       <<: [*common-env, *pipe-env, *raw-env, *registry-env, *oauth-env, *cache-env, *fe-rw-env, *photon-defaults]
     labels:
@@ -120,11 +129,12 @@ services:
   photon:
     image: rtuszik/photon-docker:latest
     container_name: tech-atlas-photon-${VERSION_SLUG}
+    mem_limit: 2g
     environment:
       - REGION=at
       - UPDATE_STRATEGY=PARALLEL     # background download, then swap
       - UPDATE_INTERVAL=720h         # ~30 days
-      - JAVA_PARAMS=-Xmx4g
+      - JAVA_PARAMS=-Xmx1800m
     volumes: 
       - photon-index:/photon/data
     restart: unless-stopped
