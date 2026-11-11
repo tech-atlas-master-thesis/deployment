@@ -134,27 +134,22 @@ def env_values(version: str, slug: str) -> dict:
     }
 
 
-def tag_images(version: str, dry_run: bool, move_stable: bool) -> None:
-    """Tag + push every app image as :<version>, then (unless disabled) move
-    :stable to it. All version tags are pushed before any :stable tag moves,
-    so a failure half-way never leaves :stable pointing at a mix of releases
-    that has no complete version behind it."""
-    tags = [version] + ([STABLE_TAG] if move_stable else [])
-    for tag in tags:
-        for image in APP_IMAGES:
-            src, dst = f"{image}:latest", f"{image}:{tag}"
-            print(f"docker tag {src} {dst}")
-            if dry_run:
-                continue
-            try:
-                subprocess.run(["docker", "tag", src, dst], check=True)
-                subprocess.run(["docker", "push", dst], check=True)
-            except FileNotFoundError:
-                raise ReleaseError("docker CLI not found on PATH.")
-            except subprocess.CalledProcessError as exc:
-                raise ReleaseError(
-                    f"Failed to tag/push {src} -> {dst} (is the image pulled locally?)"
-                ) from exc
+def tag_images(version: str, dry_run: bool) -> None:
+    """Tag + push every app image as :<version>"""
+    for image in APP_IMAGES:
+        src, dst = f"{image}:latest", f"{image}:{version}"
+        print(f"docker tag {src} {dst}")
+        if dry_run:
+            continue
+        try:
+            subprocess.run(["docker", "tag", src, dst], check=True)
+            subprocess.run(["docker", "push", dst], check=True)
+        except FileNotFoundError:
+            raise ReleaseError("docker CLI not found on PATH.")
+        except subprocess.CalledProcessError as exc:
+            raise ReleaseError(
+                f"Failed to tag/push {src} -> {dst} (is the image pulled locally?)"
+            ) from exc
 
 
 def rename_traefik_routers(compose_path: Path, slug: str) -> None:
@@ -317,7 +312,10 @@ def main() -> int:
     try:
         validate_version(version)
 
-        tag_images(version, dry_run=args.skip_tag, move_stable=not args.no_stable)
+        tag_images(version, dry_run=args.skip_tag)
+
+        if (not args.no_stable):
+            tag_images(STABLE_TAG, dry_run=args.skip_tag)
 
         version_dir = prepare_release_dir(version, force=args.force)
         build_deployment(version_dir, version, version_slug(version))
