@@ -37,6 +37,7 @@ services:
     image: moosi312/tech-atlas-dashboard-ui
     container_name: tech-atlas-dashboard-ui
     restart: unless-stopped
+    mem_limit: 1g
     ports:
       - "4200:8080"
     networks:
@@ -46,6 +47,7 @@ services:
     image: moosi312/tech-atlas-dashboard-be
     container_name: tech-atlas-dashboard-be
     restart: unless-stopped
+    mem_limit: 1g
     environment:
       - MONGO_URL=mongodb:27017
       - DB_NAME=${DB_FE_DATABASE}
@@ -60,6 +62,7 @@ services:
     image: moosi312/tech-atlas-admin-ui
     container_name: tech-atlas-admin-ui
     restart: unless-stopped
+    mem_limit: 1g
     ports:
       - "4300:8080"
     networks:
@@ -71,7 +74,7 @@ services:
     restart: unless-stopped
     # A full transform run holds the scraper data and every step result until it ends; this
     # is headroom for that, and a ceiling that turns a leak into a restart instead of host pressure.
-    mem_limit: 2g
+    mem_limit: 4g
     environment:
       - MONGO_URL=mongodb:27017
       - DB_PIPE_NAME=${DB_PIPE_DATABASE}
