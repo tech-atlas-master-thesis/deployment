@@ -137,6 +137,8 @@ services:
       - JAVA_PARAMS=-Xmx1800m
     volumes: 
       - photon-index:/photon/data
+    networks:
+      - tech_atlas
     restart: unless-stopped
 
 networks:

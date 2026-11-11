@@ -127,6 +127,8 @@ services:
       - JAVA_PARAMS=-Xmx4g
     volumes: 
       - photon-index:/photon/data
+    networks:
+      - tech_atlas
     restart: unless-stopped
 
 networks:
