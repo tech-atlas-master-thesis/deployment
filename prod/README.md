@@ -20,8 +20,9 @@ Hosts, port and image version are set in `.env`.
 | `compose.auth.yml`                     | authentik server, worker and its PostgreSQL                     |
 | `authentik/blueprints/tech-atlas.yaml` | authentik configuration as code (applied automatically)         |
 | `traefik/dynamic/tls.yml`              | Which certificate Traefik serves                                |
+| `traefik/certs/origin.crt`             | Cloudflare Origin CA certificate (its key is not in the repo)   |
 | `.env.template` → `.env`               | Configuration and secrets (`.env` is git-ignored)               |
-| `init.sh`                              | Creates `.env`, generates secrets and a self-signed certificate |
+| `init.sh`                              | Creates `.env`, generates secrets, checks the certificate       |
 
 The three compose files form one project; `COMPOSE_FILE` in `.env` joins them, so plain
 `docker compose ...` in this directory always addresses the whole stack.
@@ -29,6 +30,8 @@ The three compose files form one project; `COMPOSE_FILE` in `.env` joins them, s
 ## First start
 
 Requirements: Docker Engine with the Compose plugin and `openssl`.
+
+Before starting, check the [Certificate section](#certificate) and add the required certificate and key.
 
 ```bash
 bash init.sh                               # .env, secrets, certificate
@@ -50,13 +53,31 @@ give both a few minutes. Then:
 
 ### Cloudflare
 
-- DNS: proxied `A` records for the three hosts pointing at the server's IP.
-- SSL/TLS mode **Full**. For **Full (strict)** replace `traefik/certs/origin.crt` and
-  `origin.key` with a Cloudflare Origin CA certificate and run
-  `docker compose restart traefik`.
+- DNS: proxied (orange cloud) `A` records for the three hosts pointing at the server's IP.
+- SSL/TLS mode **Full (strict)**, with the origin certificate below.
 - `HTTPS_PORT` must be a port Cloudflare proxies HTTPS to (443, 2053, 2083, 2087, 2096,
   8443), or be mapped with an Origin Rule.
 - Recommended: firewall the port so that only Cloudflare's IP ranges can reach it.
+
+### Certificate
+
+Browsers get Cloudflare's own certificate. Between Cloudflare and this server, Traefik
+presents a **Cloudflare Origin CA certificate**: free, valid for up to 15 years, trusted by
+Cloudflare only. It is why the proxy has to stay on.
+
+Once, and again when it expires:
+
+1. Cloudflare dashboard → *SSL/TLS → Origin Server → Create Certificate*, hostnames
+   `tech-atlas.at` and `*.tech-atlas.at`, format PEM.
+2. Save the certificate as `traefik/certs/origin.crt` and commit it. It is public.
+3. Save the private key as `traefik/certs/origin.key` **on the server only**, and keep a
+   copy in a password manager; Cloudflare shows it once. It is git-ignored.
+4. `bash init.sh` checks that key and certificate belong together, then
+   `docker compose restart traefik`.
+5. Set the SSL/TLS mode to **Full (strict)**.
+
+Without an `origin.crt`, `init.sh` creates a self-signed stand-in that only works in mode
+**Full**; delete both files before installing the real pair.
 
 ## Invitations
 

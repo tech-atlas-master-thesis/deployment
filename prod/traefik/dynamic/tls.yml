@@ -1,9 +1,8 @@
 # Certificate Traefik presents to Cloudflare for every host.
 #
-# init.sh creates a self-signed pair so the stack starts out of the box; that works with the
-# Cloudflare SSL/TLS mode "Full". For "Full (strict)" replace both files with a Cloudflare
-# Origin CA certificate (Cloudflare dashboard > SSL/TLS > Origin Server > Create Certificate)
-# covering the hosts in .env, then: docker compose restart traefik
+# origin.crt is a Cloudflare Origin CA certificate and is committed to the repository;
+# origin.key is its private key and is copied to the server by hand (never committed).
+# See README.md, "Certificate". After replacing either file: docker compose restart traefik
 tls:
   stores:
     default:

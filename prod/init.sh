@@ -5,7 +5,8 @@
 #
 # - creates .env from .env.template (an existing .env is kept as it is)
 # - replaces every "__GENERATE__" placeholder in .env with a random secret
-# - creates a self-signed certificate for Traefik if traefik/certs/ has none
+# - checks that the private key for traefik/certs/origin.crt is in place; if there is no
+#   certificate at all yet, creates a self-signed stand-in
 #
 # Safe to re-run: values that are already set are never changed. To start over with new
 # secrets, delete .env *and* the Docker volumes -- the databases keep the passwords they
@@ -50,22 +51,39 @@ cat "$tmp" >"$ENV_FILE"
 echo "Generated $generated secret(s)."
 
 mkdir -p "$CERT_DIR"
-if [[ -e "$CERT_DIR/origin.crt" && -e "$CERT_DIR/origin.key" ]]; then
-    echo "Certificate in $CERT_DIR already exists -- keeping it."
+crt="$CERT_DIR/origin.crt"
+key="$CERT_DIR/origin.key"
+# Public key of a certificate / of a private key, to check that the two belong together.
+pub_of_crt() { openssl x509 -in "$crt" -noout -pubkey 2>/dev/null | openssl pkey -pubin -outform DER 2>/dev/null | openssl sha256; }
+pub_of_key() { openssl pkey -in "$key" -pubout -outform DER 2>/dev/null | openssl sha256; }
+
+if [[ -e "$crt" && ! -e "$key" ]]; then
+    # The certificate is in the repository, its private key never is.
+    echo "error: $crt is present but $key is missing." >&2
+    echo "       Copy the private key that belongs to the certificate to $key and re-run." >&2
+    exit 1
+elif [[ -e "$crt" ]]; then
+    if [[ "$(pub_of_crt)" != "$(pub_of_key)" ]]; then
+        echo "error: $key does not belong to $crt." >&2
+        exit 1
+    fi
+    chmod 600 "$key"
+    echo "Certificate in $CERT_DIR: key matches -- keeping it."
 else
+    # No certificate yet: self-signed stand-in so the stack can start.
     hosts=()
-    for key in DASHBOARD_HOST ADMIN_HOST AUTH_HOST; do
-        host="$(env_get "$key")"
+    for name in DASHBOARD_HOST ADMIN_HOST AUTH_HOST; do
+        host="$(env_get "$name")"
         [[ -n "$host" ]] && hosts+=("DNS:$host")
     done
     san="$(IFS=,; echo "${hosts[*]}")"
     openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
-        -keyout "$CERT_DIR/origin.key" -out "$CERT_DIR/origin.crt" \
+        -keyout "$key" -out "$crt" \
         -subj "/CN=$(env_get DASHBOARD_HOST)" -addext "subjectAltName=$san" 2>/dev/null
-    chmod 600 "$CERT_DIR/origin.key"
-    echo "Created a self-signed certificate for: ${san//DNS:/}"
-    echo "  -> works with Cloudflare SSL/TLS mode \"Full\". For \"Full (strict)\" replace"
-    echo "     $CERT_DIR/origin.crt and origin.key with a Cloudflare Origin CA certificate."
+    chmod 600 "$key"
+    echo "Created a self-signed stand-in certificate for: ${san//DNS:/}"
+    echo "  -> only accepted in Cloudflare SSL/TLS mode \"Full\". Replace it with a Cloudflare"
+    echo "     Origin CA certificate and use \"Full (strict)\" -- see README.md, \"Certificate\"."
 fi
 
 cat <<EOF

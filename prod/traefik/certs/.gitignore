@@ -1,2 +1,4 @@
+# origin.crt is public and belongs in the repository; the private key never does.
 *
 !.gitignore
+!origin.crt
