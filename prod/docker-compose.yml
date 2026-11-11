@@ -1,25 +1,38 @@
-x-common-labels: &common-labels
+# Tech Atlas production stack -- application services.
+#
+# This is one Compose project split over three files, joined by COMPOSE_FILE in .env:
+#   docker-compose.yml   the application (this file)
+#   compose.traefik.yml  reverse proxy, terminates HTTPS for Cloudflare
+#   compose.auth.yml     authentik identity provider for the admin UI
+# Run every `docker compose ...` command from this directory so .env is picked up.
+#
+# Third-party images are pinned to exact versions; bump them deliberately. The app images
+# follow ${VERSION}, by default the moving ":stable" tag that create_release.py sets.
+
+x-traefik-labels: &traefik-labels
   traefik.enable: "true"
-  com.centurylinklabs.watchtower.enable: "true"
 
 x-frontend: &frontend-defaults
   restart: unless-stopped
+  mem_limit: 1g
   networks:
-    - traefik
+    - edge
 
 x-backend: &backend-defaults
   restart: unless-stopped
   networks:
-    - traefik
-    - tech_atlas
+    - edge
+    - backend
 
 x-common-env: &common-env
   MONGO_URL: mongodb:27017
 
 x-oauth-env: &oauth-env
-  OAUTH_ISSUER: ${OAUTH_ISSUER}
-  OAUTH_AUDIENCE: ${OAUTH_AUDIENCE}
-  OAUTH_JWKS: ${OAUTH_JWKS}
+  # Defaults point at the bundled authentik (compose.auth.yml). Set OAUTH_ISSUER / OAUTH_JWKS
+  # in .env to use a different identity provider. The JWKS URL is OAUTH_ISSUER + OAUTH_JWKS.
+  OAUTH_ISSUER: ${OAUTH_ISSUER:-https://${AUTH_HOST}/application/o/tech-atlas/}
+  OAUTH_AUDIENCE: ${OAUTH_CLIENT_ID}
+  OAUTH_JWKS: ${OAUTH_JWKS:-jwks/}
 
 x-pipe-env: &pipe-env
   DB_PIPE_NAME: ${DB_PIPE_DATABASE}
@@ -51,95 +64,101 @@ x-fe-r-env: &fe-r-env
   DB_USER: ${DB_FE_R_USER}
   DB_PASS: ${DB_FE_R_PASS}
 
-x-photon: &photon-defaults
-  PHOTON_URL: http://tech-atlas-photon-${VERSION_SLUG}:2322
+x-photon: &photon-env
+  PHOTON_URL: http://photon:2322
 
 services:
   mongodb:
-    image: mongo:latest
-    container_name: tech-atlas-db-${VERSION_SLUG}
+    image: mongo:8.0.34
+    container_name: tech-atlas-db
+    # WiredTiger otherwise sizes its cache from the host (about half of its RAM) and keeps what
+    # it has read or written until that fills up. The limit leaves room for connections, index
+    # builds and the page cache on top of the 1 GB cache.
+    command: ["--wiredTigerCacheSizeGB", "1"]
+    mem_limit: 2g
+    restart: unless-stopped
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${DB_ROOT_USERNAME}
       MONGO_INITDB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
     networks:
-      - tech_atlas
+      - backend
     volumes:
       - db-data:/data/db
-      - ./init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js
-      - ./.env:/.env
-
-  landing-page:
-    <<: *frontend-defaults
-    image: moosi312/tech-atlas-landing-page:${VERSION}
-    container_name: tech-atlas-landing-page-${VERSION_SLUG}
-    labels:
-      <<: *common-labels
-      traefik.http.routers.tech-atlas-landing-page-prod.rule: "Host(`${LANDING_PAGE_SLUG}${DOMAIN_SLUG}${BASE_DOMAIN}`)"
-      traefik.http.routers.tech-atlas-landing-page-prod.entrypoints: web
+      # Both are only read on the very first start, while the data volume is still empty.
+      - ./init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js:ro
+      - ./.env:/.env:ro
 
   dashboard-ui:
     <<: *frontend-defaults
     image: moosi312/tech-atlas-dashboard-ui:${VERSION}
-    container_name: tech-atlas-dashboard-ui-${VERSION_SLUG}
+    container_name: tech-atlas-dashboard-ui
     labels:
-      <<: *common-labels
-      traefik.http.routers.tech-atlas-dashboard-ui-prod.rule: "Host(`${DASHBOARD_SLUG}${DOMAIN_SLUG}${BASE_DOMAIN}`) && (!PathPrefix(`/api`))"
-      traefik.http.routers.tech-atlas-dashboard-ui-prod.entrypoints: web
+      <<: *traefik-labels
+      traefik.http.routers.tech-atlas-dashboard-ui.rule: "Host(`${DASHBOARD_HOST}`) && (!PathPrefix(`/api`))"
+      traefik.http.routers.tech-atlas-dashboard-ui.entrypoints: websecure
 
   dashboard-be:
     <<: *backend-defaults
     image: moosi312/tech-atlas-dashboard-be:${VERSION}
-    container_name: tech-atlas-dashboard-be-${VERSION_SLUG}
+    container_name: tech-atlas-dashboard-be
+    mem_limit: 1g
     environment:
       <<: [*common-env, *fe-r-env]
     labels:
-      <<: *common-labels
-      traefik.http.routers.tech-atlas-dashboard-be-prod.rule: "Host(`${DASHBOARD_SLUG}${DOMAIN_SLUG}${BASE_DOMAIN}`) && PathPrefix(`/api`)"
-      traefik.http.routers.tech-atlas-dashboard-be-prod.entrypoints: web
+      <<: *traefik-labels
+      traefik.http.routers.tech-atlas-dashboard-be.rule: "Host(`${DASHBOARD_HOST}`) && PathPrefix(`/api`)"
+      traefik.http.routers.tech-atlas-dashboard-be.entrypoints: websecure
 
   admin-ui:
     <<: *frontend-defaults
     image: moosi312/tech-atlas-admin-ui:${VERSION}
-    container_name: tech-atlas-admin-ui-${VERSION_SLUG}
+    container_name: tech-atlas-admin-ui
     labels:
-      <<: *common-labels
-      traefik.http.routers.tech-atlas-admin-ui-prod.rule: "Host(`${ADMIN_SLUG}${DOMAIN_SLUG}${BASE_DOMAIN}`) && (!PathPrefix(`/api`))"
-      traefik.http.routers.tech-atlas-admin-ui-prod.entrypoints: web
+      <<: *traefik-labels
+      traefik.http.routers.tech-atlas-admin-ui.rule: "Host(`${ADMIN_HOST}`) && (!PathPrefix(`/api`))"
+      traefik.http.routers.tech-atlas-admin-ui.entrypoints: websecure
 
   admin-be:
     <<: *backend-defaults
     image: moosi312/tech-atlas-admin-be:${VERSION}
-    container_name: tech-atlas-admin-be-${VERSION_SLUG}
+    container_name: tech-atlas-admin-be
+    # A full transform run holds the scraper data and every step result until it ends; this
+    # is headroom for that, and a ceiling that turns a leak into a restart instead of host pressure.
+    mem_limit: 4g
     environment:
-      <<: [*common-env, *pipe-env, *raw-env, *registry-env, *oauth-env, *cache-env, *fe-rw-env, *photon-defaults]
+      <<: [*common-env, *pipe-env, *raw-env, *registry-env, *oauth-env, *cache-env, *fe-rw-env, *photon-env]
     labels:
-      <<: *common-labels
-      traefik.http.routers.tech-atlas-admin-be-prod.rule: "Host(`${ADMIN_SLUG}${DOMAIN_SLUG}${BASE_DOMAIN}`) && PathPrefix(`/api/admin`)"
-      traefik.http.routers.tech-atlas-admin-be-prod.entrypoints: web
+      <<: *traefik-labels
+      traefik.http.routers.tech-atlas-admin-be.rule: "Host(`${ADMIN_HOST}`) && PathPrefix(`/api/admin`)"
+      traefik.http.routers.tech-atlas-admin-be.entrypoints: websecure
 
   photon:
-    image: rtuszik/photon-docker:latest
-    container_name: tech-atlas-photon-${VERSION_SLUG}
+    image: rtuszik/photon-docker:2.5.0
+    container_name: tech-atlas-photon
+    mem_limit: 2g
+    restart: unless-stopped
     environment:
       - REGION=at
       - UPDATE_STRATEGY=PARALLEL     # background download, then swap
       - UPDATE_INTERVAL=720h         # ~30 days
-      - JAVA_PARAMS=-Xmx4g
-    volumes: 
+      # The heap has to fit inside mem_limit with room for the JVM's own memory on top;
+      # a heap as large as the limit would get the container killed instead of collected.
+      - JAVA_PARAMS=-Xmx1500m
+    volumes:
       - photon-index:/photon/data
     networks:
-      - tech_atlas
-    restart: unless-stopped
+      - backend
 
 networks:
-  tech_atlas:
-    name: tech_atlas_${VERSION_SLUG}
-  traefik:
-    name: traefik
-    external: true
+  # Traefik <-> everything it routes to.
+  edge:
+    name: tech-atlas-edge
+  # Application backends <-> MongoDB and Photon.
+  backend:
+    name: tech-atlas-backend
 
 volumes:
-  photon-index:
-    name: photon-index_${VERSION_SLUG}
   db-data:
-    name: db-data_${VERSION_SLUG}
+    name: tech-atlas-db-data
+  photon-index:
+    name: tech-atlas-photon-index

@@ -1,0 +1,85 @@
+# authentik identity provider for the admin UI (OIDC). Everything the app needs -- provider,
+# application, groups, entitlements and the invitation enrollment flow -- is declared in
+# authentik/blueprints/tech-atlas.yaml and applied automatically, so a fresh database comes
+# up fully configured. Users and invitations live in the authentik-db volume.
+
+x-authentik: &authentik
+  image: ghcr.io/goauthentik/server:2026.8.5
+  restart: unless-stopped
+  mem_limit: 1g
+  shm_size: 512mb
+  depends_on:
+    authentik-db:
+      condition: service_healthy
+  environment:
+    AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY:?run ./init.sh first}
+    AUTHENTIK_POSTGRESQL__HOST: authentik-db
+    AUTHENTIK_POSTGRESQL__NAME: authentik
+    AUTHENTIK_POSTGRESQL__USER: authentik
+    AUTHENTIK_POSTGRESQL__PASSWORD: ${AUTHENTIK_DB_PASSWORD:?run ./init.sh first}
+    # Only read on the very first start (empty database): password of "akadmin".
+    AUTHENTIK_BOOTSTRAP_PASSWORD: ${AUTHENTIK_BOOTSTRAP_PASSWORD}
+    AUTHENTIK_BOOTSTRAP_EMAIL: ${AUTHENTIK_BOOTSTRAP_EMAIL}
+    # No outbound calls to authentik's servers.
+    AUTHENTIK_DISABLE_UPDATE_CHECK: "true"
+    AUTHENTIK_DISABLE_STARTUP_ANALYTICS: "true"
+    AUTHENTIK_ERROR_REPORTING__ENABLED: "false"
+    # Read by authentik/blueprints/tech-atlas.yaml via !Env.
+    TECH_ATLAS_OAUTH_CLIENT_ID: ${OAUTH_CLIENT_ID}
+    TECH_ATLAS_ADMIN_URL: https://${ADMIN_HOST}
+  volumes:
+    - authentik-data:/data
+    - ./authentik/blueprints:/blueprints/custom:ro
+
+services:
+  authentik-db:
+    image: postgres:16.15-alpine
+    container_name: tech-atlas-authentik-db
+    restart: unless-stopped
+    mem_limit: 512m
+    environment:
+      POSTGRES_DB: authentik
+      POSTGRES_USER: authentik
+      POSTGRES_PASSWORD: ${AUTHENTIK_DB_PASSWORD:?run ./init.sh first}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}"]
+      start_period: 20s
+      interval: 30s
+      retries: 5
+      timeout: 5s
+    volumes:
+      - authentik-db:/var/lib/postgresql/data
+    networks:
+      - auth
+
+  authentik-server:
+    <<: *authentik
+    container_name: tech-atlas-authentik-server
+    command: server
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.tech-atlas-auth.rule: "Host(`${AUTH_HOST}`)"
+      traefik.http.routers.tech-atlas-auth.entrypoints: websecure
+      traefik.http.services.tech-atlas-auth.loadbalancer.server.port: "9000"
+    networks:
+      - edge
+      - auth
+
+  # Applies blueprints and runs background tasks. No Docker socket: it is only needed for
+  # authentik-managed outposts, which this stack does not use.
+  authentik-worker:
+    <<: *authentik
+    container_name: tech-atlas-authentik-worker
+    command: worker
+    networks:
+      - auth
+
+networks:
+  auth:
+    name: tech-atlas-auth
+
+volumes:
+  authentik-db:
+    name: tech-atlas-authentik-db
+  authentik-data:
+    name: tech-atlas-authentik-data

@@ -1,0 +1,324 @@
+# yaml-language-server: $schema=https://goauthentik.io/blueprints/schema.json
+#
+# Everything authentik needs for the Tech Atlas admin UI. Mounted at /blueprints/custom,
+# where the worker discovers it, applies it on first start and re-applies it whenever the
+# file changes. Applying is idempotent, so this file is also the restore path: an empty
+# authentik database plus this blueprint gives a working login again (users and open
+# invitations are data and come back from a database backup, not from here).
+#
+# To apply by hand:
+#   docker compose exec authentik-worker ak apply_blueprint /blueprints/custom/tech-atlas.yaml
+#
+# What the app expects (admin-ui, admin-be):
+#   - issuer   https://<AUTH_HOST>/application/o/tech-atlas/   (application slug below)
+#   - a public client with PKCE, client id = OAUTH_CLIENT_ID, RS256-signed tokens
+#   - scopes   openid profile email offline_access api entitlements
+#   - "groups" claim with tech-atlas-viewer / tech-atlas-editor   (admin-ui roles)
+#   - "entitlements" claim with tech-atlas:read / tech-atlas:write (admin-be authorisation)
+version: 1
+metadata:
+  name: Tech Atlas
+  labels:
+    blueprints.goauthentik.io/description: OIDC provider, application, groups, entitlements and invitation enrollment for the Tech Atlas admin UI.
+context:
+  client_id: !Env [TECH_ATLAS_OAUTH_CLIENT_ID, null]
+  admin_url: !Env [TECH_ATLAS_ADMIN_URL, "https://admin.tech-atlas.at"]
+entries:
+  # --- Built-in blueprints this one looks objects up from -----------------------------
+  - model: authentik_blueprints.metaapplyblueprint
+    attrs:
+      identifiers:
+        name: Default - Provider authorization flow (implicit consent)
+      required: false
+  - model: authentik_blueprints.metaapplyblueprint
+    attrs:
+      identifiers:
+        name: Default - Provider invalidation flow
+      required: false
+  - model: authentik_blueprints.metaapplyblueprint
+    attrs:
+      identifiers:
+        name: System - OAuth2 Provider - Scopes
+      required: false
+
+  # --- Groups (names are the roles admin-ui checks in the "groups" claim) ---------------
+  # No attrs on purpose: re-applying must never reset who is in a group.
+  - model: authentik_core.group
+    id: group-viewer
+    identifiers:
+      name: tech-atlas-viewer
+  - model: authentik_core.group
+    id: group-editor
+    identifiers:
+      name: tech-atlas-editor
+
+  # --- OIDC provider + application ---------------------------------------------------------
+  # admin-ui requests the scope "api"; it carries no claims but has to exist to be granted.
+  - model: authentik_providers_oauth2.scopemapping
+    id: scope-api
+    identifiers:
+      name: "Tech Atlas: OAuth 'api'"
+    attrs:
+      scope_name: api
+      description: Access to the Tech Atlas admin API
+      expression: |
+        return {}
+
+  - model: authentik_providers_oauth2.oauth2provider
+    id: provider
+    identifiers:
+      name: tech-atlas
+    attrs:
+      client_type: public
+      client_id: !Context client_id
+      authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
+      invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+      # admin-be only accepts RS256, which needs a signing key (without one authentik signs HS256).
+      signing_key: !Find [authentik_crypto.certificatekeypair, [name, authentik Self-signed Certificate]]
+      issuer_mode: per_provider
+      sub_mode: hashed_user_id
+      include_claims_in_id_token: true
+      grant_types:
+        - authorization_code
+        - refresh_token
+      redirect_uris:
+        # admin-ui uses its origin as redirect URI.
+        - matching_mode: strict
+          url: !Context admin_url
+        - matching_mode: strict
+          url: !Format ["%s/", !Context admin_url]
+      access_token_validity: minutes=10
+      refresh_token_validity: days=30
+      property_mappings:
+        - !Find [authentik_providers_oauth2.scopemapping, [managed, goauthentik.io/providers/oauth2/scope-openid]]
+        - !Find [authentik_providers_oauth2.scopemapping, [managed, goauthentik.io/providers/oauth2/scope-email]]
+        - !Find [authentik_providers_oauth2.scopemapping, [managed, goauthentik.io/providers/oauth2/scope-profile]]
+        - !Find [authentik_providers_oauth2.scopemapping, [managed, goauthentik.io/providers/oauth2/scope-offline_access]]
+        - !Find [authentik_providers_oauth2.scopemapping, [managed, goauthentik.io/providers/oauth2/scope-entitlements]]
+        - !KeyOf scope-api
+
+  - model: authentik_core.application
+    id: app
+    identifiers:
+      slug: tech-atlas
+    attrs:
+      name: Tech Atlas Admin
+      provider: !KeyOf provider
+      meta_launch_url: !Context admin_url
+      # Access if ANY binding below matches.
+      policy_engine_mode: any
+
+  # Only members of the two groups may sign in to the application.
+  - model: authentik_policies.policybinding
+    identifiers:
+      target: !KeyOf app
+      group: !KeyOf group-viewer
+    attrs:
+      order: 0
+  - model: authentik_policies.policybinding
+    identifiers:
+      target: !KeyOf app
+      group: !KeyOf group-editor
+    attrs:
+      order: 1
+
+  # --- Entitlements (what admin-be authorises on) ----------------------------------------
+  - model: authentik_core.applicationentitlement
+    id: entitlement-read
+    identifiers:
+      name: tech-atlas:read
+      app: !KeyOf app
+  - model: authentik_core.applicationentitlement
+    id: entitlement-write
+    identifiers:
+      name: tech-atlas:write
+      app: !KeyOf app
+
+  # read: viewers and editors
+  - model: authentik_policies.policybinding
+    identifiers:
+      target: !KeyOf entitlement-read
+      group: !KeyOf group-viewer
+    attrs:
+      order: 0
+  - model: authentik_policies.policybinding
+    identifiers:
+      target: !KeyOf entitlement-read
+      group: !KeyOf group-editor
+    attrs:
+      order: 1
+  # write: editors only
+  - model: authentik_policies.policybinding
+    identifiers:
+      target: !KeyOf entitlement-write
+      group: !KeyOf group-editor
+    attrs:
+      order: 0
+
+  # --- Invitation-only enrollment ------------------------------------------------------------
+  # Sign-up only works through an invitation link:
+  #   https://<AUTH_HOST>/if/flow/tech-atlas-enrollment/?itoken=<invitation id>
+  # Create links in the admin interface under Directory > Invitations (choose this flow).
+  # Everyone who enrolls becomes a viewer; an invitation whose custom attributes contain
+  #   attributes:
+  #     tech_atlas_role: editor
+  # additionally makes them an editor.
+  - model: authentik_flows.flow
+    id: enrollment-flow
+    identifiers:
+      slug: tech-atlas-enrollment
+    attrs:
+      name: Tech Atlas enrollment
+      title: Create your Tech Atlas account
+      designation: enrollment
+      authentication: require_unauthenticated
+
+  - model: authentik_stages_invitation.invitationstage
+    id: enrollment-invitation
+    identifiers:
+      name: tech-atlas-enrollment-invitation
+    attrs:
+      # Without a valid invitation the flow stops here.
+      continue_flow_without_invitation: false
+
+  - model: authentik_stages_prompt.prompt
+    id: field-username
+    identifiers:
+      name: tech-atlas-enrollment-field-username
+    attrs:
+      field_key: username
+      label: Username
+      type: username
+      required: true
+      placeholder: Username
+      placeholder_expression: false
+      order: 0
+  - model: authentik_stages_prompt.prompt
+    id: field-name
+    identifiers:
+      name: tech-atlas-enrollment-field-name
+    attrs:
+      field_key: name
+      label: Name
+      type: text
+      required: true
+      placeholder: Name
+      placeholder_expression: false
+      order: 1
+  - model: authentik_stages_prompt.prompt
+    id: field-email
+    identifiers:
+      name: tech-atlas-enrollment-field-email
+    attrs:
+      field_key: email
+      label: Email
+      type: email
+      required: true
+      placeholder: Email
+      placeholder_expression: false
+      order: 2
+  - model: authentik_stages_prompt.prompt
+    id: field-password
+    identifiers:
+      name: tech-atlas-enrollment-field-password
+    attrs:
+      field_key: password
+      label: Password
+      type: password
+      required: true
+      placeholder: Password
+      placeholder_expression: false
+      order: 3
+  - model: authentik_stages_prompt.prompt
+    id: field-password-repeat
+    identifiers:
+      name: tech-atlas-enrollment-field-password-repeat
+    attrs:
+      field_key: password_repeat
+      label: Password (repeat)
+      type: password
+      required: true
+      placeholder: Password (repeat)
+      placeholder_expression: false
+      order: 4
+
+  - model: authentik_stages_prompt.promptstage
+    id: enrollment-prompt
+    identifiers:
+      name: tech-atlas-enrollment-prompt
+    attrs:
+      fields:
+        - !KeyOf field-username
+        - !KeyOf field-name
+        - !KeyOf field-email
+        - !KeyOf field-password
+        - !KeyOf field-password-repeat
+
+  - model: authentik_stages_user_write.userwritestage
+    id: enrollment-user-write
+    identifiers:
+      name: tech-atlas-enrollment-user-write
+    attrs:
+      user_creation_mode: always_create
+      user_type: internal
+      user_path_template: users/tech-atlas
+      create_users_group: !KeyOf group-viewer
+
+  - model: authentik_stages_user_login.userloginstage
+    id: enrollment-user-login
+    identifiers:
+      name: tech-atlas-enrollment-user-login
+
+  # Runs right before the user is written; adds the editor group when the invitation asks
+  # for it. The role comes from the invitation's fixed data, never from what the user types.
+  - model: authentik_policies_expression.expressionpolicy
+    id: enrollment-role-policy
+    identifiers:
+      name: tech-atlas-enrollment-assign-role
+    attrs:
+      expression: |
+        from authentik.core.models import Group
+
+        plan_context = request.context["flow_plan"].context
+        invitation = plan_context.get("invitation")
+        fixed_data = invitation.fixed_data if invitation else {}
+        role = (fixed_data.get("attributes") or {}).get("tech_atlas_role")
+        if role == "editor":
+            plan_context["groups"] = list(Group.objects.filter(name="tech-atlas-editor"))
+        return True
+
+  - model: authentik_flows.flowstagebinding
+    identifiers:
+      target: !KeyOf enrollment-flow
+      stage: !KeyOf enrollment-invitation
+      order: 5
+    attrs:
+      evaluate_on_plan: true
+      re_evaluate_policies: true
+  - model: authentik_flows.flowstagebinding
+    identifiers:
+      target: !KeyOf enrollment-flow
+      stage: !KeyOf enrollment-prompt
+      order: 10
+  - model: authentik_flows.flowstagebinding
+    id: enrollment-user-write-binding
+    identifiers:
+      target: !KeyOf enrollment-flow
+      stage: !KeyOf enrollment-user-write
+      order: 20
+    attrs:
+      # The role policy needs the invitation, which is only known once the flow is running.
+      evaluate_on_plan: false
+      re_evaluate_policies: true
+  - model: authentik_flows.flowstagebinding
+    identifiers:
+      target: !KeyOf enrollment-flow
+      stage: !KeyOf enrollment-user-login
+      order: 100
+
+  - model: authentik_policies.policybinding
+    identifiers:
+      target: !KeyOf enrollment-user-write-binding
+      policy: !KeyOf enrollment-role-policy
+    attrs:
+      order: 0

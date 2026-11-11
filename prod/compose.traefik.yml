@@ -1,0 +1,31 @@
+# Reverse proxy. Cloudflare connects to this server by IP on HTTPS_PORT; Traefik terminates
+# TLS with the certificate in traefik/certs/ and routes by Host header to the services that
+# carry traefik.* labels.
+
+services:
+  traefik:
+    image: traefik:v3.7.18
+    container_name: tech-atlas-traefik
+    restart: unless-stopped
+    mem_limit: 256m
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.network=tech-atlas-edge
+      - --providers.file.directory=/etc/traefik/dynamic
+      - --entrypoints.websecure.address=:443
+      # Every router on this entrypoint is HTTPS; no per-router tls label needed.
+      - --entrypoints.websecure.http.tls=true
+      - --global.checknewversion=false
+      - --global.sendanonymoususage=false
+      - --log.level=INFO
+      # No --accesslog: access logging stays off (Traefik's default), so no visitor requests
+      # are recorded here.
+    ports:
+      - "${HTTPS_PORT:-443}:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik/dynamic:/etc/traefik/dynamic:ro
+      - ./traefik/certs:/certs:ro
+    networks:
+      - edge

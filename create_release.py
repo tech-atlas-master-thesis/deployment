@@ -3,13 +3,17 @@
 Create a versioned release of tech-atlas.
 
 Usage:
-    ./create_release.py [version] [--force] [--skip-tag]
+    ./create_release.py [version] [--force] [--skip-tag] [--no-stable]
 
 If no version is given, defaults to "<year>.<month>.<minor>" (e.g. 2026.08.0),
 where <minor> is the next free number for the current year/month under release/.
 
 What it does, in order (each step is safe to re-run):
-    1. Tag every app image ":latest" -> ":<version>".
+    1. Tag every app image ":latest" -> ":<version>" and push it, then move
+       the ":stable" tag to the same image and push that too. ":stable" always
+       points at the newest release and is what the prod deployment runs
+       (prod/.env: VERSION="stable"). Pass --no-stable to leave it where it is,
+       e.g. when re-releasing or back-porting an older version.
     2. Create release/<version>/ and copy in docker-compose.yml + init-mongo.js
        from latest/, and .env.template from the repo root.
     3. Upsert VERSION / VERSION_SLUG / BASE_DOMAIN / COMPOSE_PROJECT_NAME into
@@ -26,14 +30,13 @@ What it does, in order (each step is safe to re-run):
     5. Validate the result with `docker compose config` (if the docker CLI is
        available) or a structural YAML/interpolation check otherwise.
 
-    6. Repeat steps 2-5 for prod/, using "prod" in place of the version slug
-       (container/network/volume names, router names, subdomains). VERSION
-       stays the real version, so prod runs the images tagged in step 1.
-       prod/ is refreshed by every release, without needing --force.
+The .env file itself is intentionally NOT copied to release/<version>/ --
+.env.template is the starting point for a release; secrets get filled in
+separately.
 
-The .env file itself is intentionally NOT copied, neither to release/<version>/
-nor to prod/ -- .env.template is the starting point for a release; secrets get
-filled in separately. An existing prod/.env is left untouched.
+prod/ is NOT touched by this script. It is a standalone, hand-maintained stack
+for its own server (own Traefik + identity provider) and follows releases
+through the ":stable" image tag instead of through copied files.
 
 Everything else in docker-compose.yml (image tags, container/network/volume
 names, the Traefik Host() rule) is driven purely by ${VERSION} / ${VERSION_SLUG}
@@ -52,8 +55,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 LATEST_DIR = ROOT / "latest"
 RELEASE_ROOT = ROOT / "release"
-PROD_DIR = ROOT / "prod"
-PROD_SLUG = "prod"
 ENV_TEMPLATE_SRC = ROOT / ".env.template"
 
 # The app images we build & tag ourselves. Third-party images (e.g. mongo)
@@ -78,6 +79,9 @@ ROUTER_NAMES = [
 ]
 
 BASE_DOMAIN_ROOT = "tech-atlas.mooslechner.dev"
+
+# Moving tag that always points at the newest release; prod deploys this.
+STABLE_TAG = "stable"
 
 VERSION_RE = re.compile(r"^[A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?$")
 
@@ -130,21 +134,27 @@ def env_values(version: str, slug: str) -> dict:
     }
 
 
-def tag_images(version: str, dry_run: bool) -> None:
-    for image in APP_IMAGES:
-        src, dst = f"{image}:latest", f"{image}:{version}"
-        print(f"docker tag {src} {dst}")
-        if dry_run:
-            continue
-        try:
-            subprocess.run(["docker", "tag", src, dst], check=True)
-            subprocess.run(["docker", "push", dst], check=True)
-        except FileNotFoundError:
-            raise ReleaseError("docker CLI not found on PATH.")
-        except subprocess.CalledProcessError as exc:
-            raise ReleaseError(
-                f"Failed to tag {src} -> {dst} (is the image pulled locally?)"
-            ) from exc
+def tag_images(version: str, dry_run: bool, move_stable: bool) -> None:
+    """Tag + push every app image as :<version>, then (unless disabled) move
+    :stable to it. All version tags are pushed before any :stable tag moves,
+    so a failure half-way never leaves :stable pointing at a mix of releases
+    that has no complete version behind it."""
+    tags = [version] + ([STABLE_TAG] if move_stable else [])
+    for tag in tags:
+        for image in APP_IMAGES:
+            src, dst = f"{image}:latest", f"{image}:{tag}"
+            print(f"docker tag {src} {dst}")
+            if dry_run:
+                continue
+            try:
+                subprocess.run(["docker", "tag", src, dst], check=True)
+                subprocess.run(["docker", "push", dst], check=True)
+            except FileNotFoundError:
+                raise ReleaseError("docker CLI not found on PATH.")
+            except subprocess.CalledProcessError as exc:
+                raise ReleaseError(
+                    f"Failed to tag/push {src} -> {dst} (is the image pulled locally?)"
+                ) from exc
 
 
 def rename_traefik_routers(compose_path: Path, slug: str) -> None:
@@ -198,7 +208,7 @@ def prepare_release_dir(version: str, force: bool) -> Path:
 
 def copy_release_files(target_dir: Path) -> Path:
     """Copies an explicit list of files, which is what keeps latest/.env out
-    of every release and of prod/."""
+    of every release."""
     shutil.copy2(LATEST_DIR / "docker-compose.yml", target_dir / "docker-compose.yml")
     shutil.copy2(LATEST_DIR / "init-mongo.js", target_dir / "init-mongo.js")
     env_template_dst = target_dir / ".env.template"
@@ -296,25 +306,28 @@ def main() -> int:
     parser.add_argument("version", nargs="?", help="Version name (default: <year>.<month>.<minor>)")
     parser.add_argument("--force", action="store_true", help="Overwrite an existing release/<version>/")
     parser.add_argument("--skip-tag", action="store_true", help="Skip `docker tag` (for testing without Docker)")
+    parser.add_argument(
+        "--no-stable",
+        action="store_true",
+        help=f"Don't move the ':{STABLE_TAG}' tag to this release (prod keeps running the previous one)",
+    )
     args = parser.parse_args()
 
     version = args.version or default_version()
     try:
         validate_version(version)
 
-        tag_images(version, dry_run=args.skip_tag)
+        tag_images(version, dry_run=args.skip_tag, move_stable=not args.no_stable)
 
         version_dir = prepare_release_dir(version, force=args.force)
         build_deployment(version_dir, version, version_slug(version))
-
-        PROD_DIR.mkdir(exist_ok=True)
-        build_deployment(PROD_DIR, version, PROD_SLUG)
     except ReleaseError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
     print(f"\nRelease '{version}' created at {version_dir}")
-    print(f"Prod updated to '{version}' at {PROD_DIR}")
+    if not args.no_stable and not args.skip_tag:
+        print(f"':{STABLE_TAG}' now points at '{version}' -- update prod with: docker compose pull && docker compose up -d")
     return 0
 
 
