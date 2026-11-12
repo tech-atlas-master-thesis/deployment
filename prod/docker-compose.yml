@@ -80,13 +80,32 @@ services:
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${DB_ROOT_USERNAME}
       MONGO_INITDB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      # Read by init-mongo.js, which creates the databases and their users.
+      DB_ROOT_USERNAME: ${DB_ROOT_USERNAME}
+      DB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      DB_PIPE_DATABASE: ${DB_PIPE_DATABASE}
+      DB_PIPE_USER_RW: ${DB_PIPE_USER_RW}
+      DB_PIPE_PASS_RW: ${DB_PIPE_PASS_RW}
+      DB_CACHE_DATABASE: ${DB_CACHE_DATABASE}
+      DB_CACHE_USER_RW: ${DB_CACHE_USER_RW}
+      DB_CACHE_PASS_RW: ${DB_CACHE_PASS_RW}
+      DB_RAW_DATABASE: ${DB_RAW_DATABASE}
+      DB_RAW_RW_USER: ${DB_RAW_RW_USER}
+      DB_RAW_RW_PASS: ${DB_RAW_RW_PASS}
+      DB_FE_DATABASE: ${DB_FE_DATABASE}
+      DB_FE_RW_USER: ${DB_FE_RW_USER}
+      DB_FE_RW_PASS: ${DB_FE_RW_PASS}
+      DB_FE_R_USER: ${DB_FE_R_USER}
+      DB_FE_R_PASS: ${DB_FE_R_PASS}
+      DB_REGISTRY_NAME: ${DB_REGISTRY_NAME}
+      DB_REGISTRY_USER: ${DB_REGISTRY_USER}
+      DB_REGISTRY_PASS: ${DB_REGISTRY_PASS}
     networks:
       - backend
     volumes:
       - db-data:/data/db
-      # Both are only read on the very first start, while the data volume is still empty.
+      # Only run on the very first start, while the data volume is still empty.
       - ./init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js:ro
-      - ./.env:/.env:ro
 
   dashboard-ui:
     <<: *frontend-defaults
