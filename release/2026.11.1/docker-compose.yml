@@ -1,0 +1,159 @@
+x-common-labels: &common-labels
+  traefik.enable: "true"
+  com.centurylinklabs.watchtower.enable: "true"
+
+x-frontend: &frontend-defaults
+  restart: unless-stopped
+  networks:
+    - traefik
+
+x-backend: &backend-defaults
+  restart: unless-stopped
+  networks:
+    - traefik
+    - tech_atlas
+
+x-common-env: &common-env
+  MONGO_URL: mongodb:27017
+
+x-oauth-env: &oauth-env
+  OAUTH_ISSUER: ${OAUTH_ISSUER}
+  OAUTH_AUDIENCE: ${OAUTH_AUDIENCE}
+  OAUTH_JWKS: ${OAUTH_JWKS}
+
+x-pipe-env: &pipe-env
+  DB_PIPE_NAME: ${DB_PIPE_DATABASE}
+  DB_PIPE_USER: ${DB_PIPE_USER_RW}
+  DB_PIPE_PASS: ${DB_PIPE_PASS_RW}
+
+x-raw-env: &raw-env
+  DB_RAW_NAME: ${DB_RAW_DATABASE}
+  DB_RAW_USER: ${DB_RAW_RW_USER}
+  DB_RAW_PASS: ${DB_RAW_RW_PASS}
+
+x-cache-env: &cache-env
+  DB_CACHE_NAME: ${DB_CACHE_DATABASE}
+  DB_CACHE_USER: ${DB_CACHE_USER_RW}
+  DB_CACHE_PASS: ${DB_CACHE_PASS_RW}
+
+x-registry-env: &registry-env
+  DB_REGISTRY_NAME: ${DB_REGISTRY_NAME}
+  DB_REGISTRY_USER: ${DB_REGISTRY_USER}
+  DB_REGISTRY_PASS: ${DB_REGISTRY_PASS}
+
+x-fe-rw-env: &fe-rw-env
+  DB_FE_DATABASE: ${DB_FE_DATABASE}
+  DB_FE_RW_USER: ${DB_FE_RW_USER}
+  DB_FE_RW_PASS: ${DB_FE_RW_PASS}
+
+x-fe-r-env: &fe-r-env
+  DB_NAME: ${DB_FE_DATABASE}
+  DB_USER: ${DB_FE_R_USER}
+  DB_PASS: ${DB_FE_R_PASS}
+
+x-photon: &photon-defaults
+  PHOTON_URL: http://tech-atlas-photon-${VERSION_SLUG}:2322
+
+services:
+  mongodb:
+    image: mongo:latest
+    container_name: tech-atlas-db-${VERSION_SLUG}
+    # WiredTiger otherwise sizes its cache from the host (about half of its RAM) and keeps what
+    # it has read or written until that fills up. The limit leaves room for connections, index
+    # builds and the page cache on top of the 1 GB cache.
+    command: ["--wiredTigerCacheSizeGB", "1"]
+    mem_limit: 2g
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${DB_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+    networks:
+      - tech_atlas
+    volumes:
+      - db-data:/data/db
+      - ./init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js
+      - ./.env:/.env
+
+  landing-page:
+    <<: *frontend-defaults
+    image: moosi312/tech-atlas-landing-page:${VERSION}
+    container_name: tech-atlas-landing-page-${VERSION_SLUG}
+    mem_limit: 1g
+    labels:
+      <<: *common-labels
+      traefik.http.routers.tech-atlas-landing-page-2026-11-1.rule: "Host(`${LANDING_PAGE_SLUG}${DOMAIN_SLUG}${BASE_DOMAIN}`)"
+      traefik.http.routers.tech-atlas-landing-page-2026-11-1.entrypoints: web
+
+  dashboard-ui:
+    <<: *frontend-defaults
+    image: moosi312/tech-atlas-dashboard-ui:${VERSION}
+    container_name: tech-atlas-dashboard-ui-${VERSION_SLUG}
+    mem_limit: 1g
+    labels:
+      <<: *common-labels
+      traefik.http.routers.tech-atlas-dashboard-ui-2026-11-1.rule: "Host(`${DASHBOARD_SLUG}${DOMAIN_SLUG}${BASE_DOMAIN}`) && (!PathPrefix(`/api`))"
+      traefik.http.routers.tech-atlas-dashboard-ui-2026-11-1.entrypoints: web
+
+  dashboard-be:
+    <<: *backend-defaults
+    image: moosi312/tech-atlas-dashboard-be:${VERSION}
+    container_name: tech-atlas-dashboard-be-${VERSION_SLUG}
+    mem_limit: 1g
+    environment:
+      <<: [*common-env, *fe-r-env]
+    labels:
+      <<: *common-labels
+      traefik.http.routers.tech-atlas-dashboard-be-2026-11-1.rule: "Host(`${DASHBOARD_SLUG}${DOMAIN_SLUG}${BASE_DOMAIN}`) && PathPrefix(`/api`)"
+      traefik.http.routers.tech-atlas-dashboard-be-2026-11-1.entrypoints: web
+
+  admin-ui:
+    <<: *frontend-defaults
+    image: moosi312/tech-atlas-admin-ui:${VERSION}
+    container_name: tech-atlas-admin-ui-${VERSION_SLUG}
+    mem_limit: 1g
+    labels:
+      <<: *common-labels
+      traefik.http.routers.tech-atlas-admin-ui-2026-11-1.rule: "Host(`${ADMIN_SLUG}${DOMAIN_SLUG}${BASE_DOMAIN}`) && (!PathPrefix(`/api`))"
+      traefik.http.routers.tech-atlas-admin-ui-2026-11-1.entrypoints: web
+
+  admin-be:
+    <<: *backend-defaults
+    image: moosi312/tech-atlas-admin-be:${VERSION}
+    container_name: tech-atlas-admin-be-${VERSION_SLUG}
+    # A full transform run holds the scraper data and every step result until it ends; this
+    # is headroom for that, and a ceiling that turns a leak into a restart instead of host pressure.
+    mem_limit: 4g
+    environment:
+      <<: [*common-env, *pipe-env, *raw-env, *registry-env, *oauth-env, *cache-env, *fe-rw-env, *photon-defaults]
+    labels:
+      <<: *common-labels
+      traefik.http.routers.tech-atlas-admin-be-2026-11-1.rule: "Host(`${ADMIN_SLUG}${DOMAIN_SLUG}${BASE_DOMAIN}`) && PathPrefix(`/api/admin`)"
+      traefik.http.routers.tech-atlas-admin-be-2026-11-1.entrypoints: web
+
+  photon:
+    image: rtuszik/photon-docker:latest
+    container_name: tech-atlas-photon-${VERSION_SLUG}
+    mem_limit: 2g
+    environment:
+      - REGION=at
+      - UPDATE_STRATEGY=PARALLEL     # background download, then swap
+      - UPDATE_INTERVAL=720h         # ~30 days
+      - JAVA_PARAMS=-Xmx1800m
+    volumes: 
+      - photon-index:/photon/data
+    networks:
+      - tech_atlas
+    restart: unless-stopped
+
+networks:
+  tech_atlas:
+    name: tech_atlas_${VERSION_SLUG}
+  traefik:
+    name: traefik
+    external: true
+
+volumes:
+  photon-index:
+    name: photon-index_${VERSION_SLUG}
+  db-data:
+    name: db-data_${VERSION_SLUG}
