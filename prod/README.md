@@ -135,9 +135,9 @@ send new invitations. Restart `admin-be` afterwards, it caches authentik's signi
 
 ## Notes
 
-- **admin-ui has the OIDC issuer compiled in** (`environment.prod.ts`). The image has to be
-  built with `issuer: 'https://auth.tech-atlas.at/application/o/tech-atlas/'` (or read it at
-  runtime) before login works against this stack. The client id is already the same.
+- admin-ui gets its OIDC issuer and client id at container start (`OAUTH_ISSUER`,
+  `OAUTH_CLIENT_ID` in `docker-compose.yml`). This needs an admin-ui image that supports
+  runtime configuration; older images ignore the variables and use their compiled-in issuer.
 - `admin-be` fetches authentik's signing keys from `https://<AUTH_HOST>/...`, i.e. through
   Cloudflare, so DNS has to be live before the admin API accepts logins.
 - MongoDB 8.0 refuses to start on Linux kernels 6.19 – 7.0.13 (upstream incompatibility,

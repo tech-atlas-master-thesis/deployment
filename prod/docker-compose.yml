@@ -28,11 +28,13 @@ x-common-env: &common-env
   MONGO_URL: mongodb:27017
 
 x-oauth-env: &oauth-env
-  # Defaults point at the bundled authentik (compose.auth.yml). Set OAUTH_ISSUER / OAUTH_JWKS
-  # in .env to use a different identity provider. The JWKS URL is OAUTH_ISSUER + OAUTH_JWKS.
   OAUTH_ISSUER: ${OAUTH_ISSUER:-https://${AUTH_HOST}/application/o/tech-atlas/}
   OAUTH_AUDIENCE: ${OAUTH_CLIENT_ID}
   OAUTH_JWKS: ${OAUTH_JWKS:-jwks/}
+
+x-oauth-ui: &oauth-ui
+  OAUTH_ISSUER: ${OAUTH_ISSUER:-https://${AUTH_HOST}/application/o/tech-atlas/}
+  OAUTH_CLIENT_ID: ${OAUTH_CLIENT_ID}
 
 x-pipe-env: &pipe-env
   DB_PIPE_NAME: ${DB_PIPE_DATABASE}
@@ -132,6 +134,8 @@ services:
     <<: *frontend-defaults
     image: moosi312/tech-atlas-admin-ui:${VERSION}
     container_name: tech-atlas-admin-ui
+    environment:
+      <<: *oauth-ui
     labels:
       <<: *traefik-labels
       traefik.http.routers.tech-atlas-admin-ui.rule: "Host(`${ADMIN_HOST}`) && (!PathPrefix(`/api`))"
